@@ -1,0 +1,2745 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <!-- Приватність: жодних зовнішніх підключень. Усе тільки з власного origin. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#e1decb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <!-- black-translucent потрібен для бежевого фону ПІД статус-баром (default дає білу
+       смужку, theme-color iOS у WebClip ігнорує). Але в translucent iOS занижує
+       layout-viewport на висоту статус-бара (873 замість 932, прикріплено до верху) —
+       компенсуємо через --vpx: html/body розтягнуто на screen.height − innerHeight
+       (див. скрипт нижче і pwacompat#36). БЕЗ --vpx таб-бар висить над home-indicator. -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Резерв+">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=2">
+  <link rel="icon" type="image/png" href="apple-touch-icon.png?v=2">
+  <link rel="manifest" href="manifest.json">
+  <title>Резерв+</title>
+  <script src="app-auth.js"></script>
+  <script>if('serviceWorker'in navigator){
+    /* авто-оновлення: коли активується новий SW (нова версія) — перезавантажуємо сторінку один раз,
+       щоб юзерам не треба було вручну закривати/відкривати застосунок. */
+    var _swReloading=false;
+    navigator.serviceWorker.addEventListener('controllerchange',function(){if(_swReloading)return;_swReloading=true;location.reload();});
+    var _swReg=null;
+    function _swCheck(){ if(!_swReg)return; try{_swReg.update();}catch(e){}
+      /* якщо новий SW уже завантажився й «чекає» — проштовхуємо його активацію негайно */
+      try{ if(_swReg.waiting) _swReg.waiting.postMessage({t:'skip'}); }catch(e){} }
+    window.addEventListener('load',function(){
+      navigator.serviceWorker.register('sw.js').then(function(reg){
+        if(!reg)return; _swReg=reg; _swCheck();
+        reg.addEventListener('updatefound',function(){       /* новий воркер знайдено → чекаємо активації */
+          var nw=reg.installing; if(!nw)return;
+          nw.addEventListener('statechange',function(){ if(nw.state==='installed'&&reg.waiting){try{reg.waiting.postMessage({t:'skip'});}catch(e){}} });
+        });
+        setInterval(_swCheck,30000);   /* перевіряти оновлення що 30с поки відкрито */
+      }).catch(function(){});
+    });
+    /* повернення застосунку на передній план (iOS) — активний тригер перевірки оновлення */
+    document.addEventListener('visibilitychange',function(){ if(!document.hidden)_swCheck(); });
+    window.addEventListener('pageshow',_swCheck);
+  }</script>
+  <style>
+    @font-face{font-family:'e-Ukraine';src:url(fonts/e-Ukraine-Light.otf);font-weight:300;font-display:swap;}
+    @font-face{font-family:'e-Ukraine';src:url(fonts/e-Ukraine-Regular.otf);font-weight:400;font-display:swap;}
+    @font-face{font-family:'e-Ukraine';src:url(fonts/e-Ukraine-Medium.otf);font-weight:500;font-display:swap;}
+    @font-face{font-family:'e-Ukraine';src:url(fonts/e-Ukraine-Bold.otf);font-weight:700;font-display:swap;}
+    @font-face{font-family:'e-UkraineHead';src:url(fonts/e-UkraineHead-Light.otf);font-weight:300;font-display:swap;}
+    @font-face{font-family:'e-UkraineHead';src:url(fonts/e-UkraineHead-Regular.otf);font-weight:400;font-display:swap;}
+    @font-face{font-family:'e-UkraineHead';src:url(fonts/e-UkraineHead-Medium.otf);font-weight:500;font-display:swap;}
+    @font-face{font-family:'e-UkraineHead';src:url(fonts/e-UkraineHead-Bold.otf);font-weight:700;font-display:swap;}
+    :root{
+      /* Компенсація заниженого viewport у standalone (див. скрипт у <head>).
+         --vpx = screen − innerHeight (ставить JS). Застосовуємо через --vpxe =
+         min(--vpx, env(top)): відсікає default-режим (env(top)=0 — viewport і так
+         дістає низу, розтягувати НЕ можна: v31 виштовхував меню за екран)
+         і справний translucent (--vpx=0). Розтягуємось лише в баг-режимі
+         translucent, де env(top)=59 І viewport занижений. */
+      --vpx:0px;
+      --vpxe:min(var(--vpx), env(safe-area-inset-top, 0px));
+      --bg:#e1decb;--card:#dad7c8;--strip:#949585;--accent:#fc890c;
+      --text:#000;--muted:#6a6657;--white:#fbfdfc;
+      --divider:rgba(0,0,0,.12);--divider-soft:rgba(0,0,0,.08);
+    }
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+    html,body{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+    /* fixed page — no scroll / no rubber-band swipe.
+       +var(--vpxe): у standalone-translucent iOS звітує viewport БЕЗ висоти статус-бара
+       (873 на екрані 932), хоч малює на весь екран — розтягуємо html+body до фізичного
+       низу, інакше таб-бар зависає над home-indicator. --vpx ставить скрипт у <head>.
+       ЧОМУ саме так (перевірено на пристрої, v33–v36):
+       · position:fixed iOS КЛІПАЄ по краю заниженого viewport (873) — «біла стрічка
+         перерізає меню». Тому НІЯКИХ fixed для видимого; шари = absolute у body.
+       · Звичайний потік/absolute малюється до фізичного низу, але 59px оверфлоу
+         робить документ скролибельним (overflow:hidden на html iOS ігнорує) —
+         скрол глушать touch-action:none на body + scroll-пін у <head>-скрипті. */
+    html{height:calc(100% + var(--vpxe));overflow:hidden;overscroll-behavior:none;}
+    body{
+      position:relative;
+      height:calc(100vh + var(--vpxe));height:calc(100dvh + var(--vpxe));overflow:hidden;overscroll-behavior:none;touch-action:none;
+      font-family:'e-Ukraine',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      background:#23221e;color:var(--text);display:flex;flex-direction:column;
+    }
+    /* setRootBg (JS) фарбує html/body під низ поточного екрана — захисний шар для
+       випадків, коли розкладка не дістає краю (Safari-тулбар тощо). Стартово
+       темний — під сплеш. Основну адаптацію робить --vpxe (див. блок наприкінці). */
+    html{background:#23221e;}
+
+    #app{flex:1 1 auto;min-height:0;position:relative;background:var(--bg);}
+    .screen{position:absolute;inset:0;display:flex;flex-direction:column;}
+    .screen[hidden]{display:none;}
+    .scroll{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+
+    .top{display:flex;justify-content:flex-end;padding:0 24px;padding-top:calc(max(14px,env(safe-area-inset-top)) + 27px);}
+    .notif{display:inline-flex;align-items:center;gap:6px;background:#fff;border-radius:999px;padding:4.5px 12px;font-size:15px;font-weight:500;border:none;color:var(--text);}
+    .notif svg{width:20px;height:20px;}
+
+    .wrap{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding:0 24px;}
+    .gap-top{flex:1 1 0;min-height:14px;}
+    .gap-bottom{flex:1 1 0;min-height:14px;}
+
+    /* flip container — fixed-proportion card, centered by the gaps */
+    .flip{flex:0 0 auto;width:100%;aspect-ratio:3819/5137;max-height:100%;perspective:1500px;position:relative;}
+    .flip-inner{position:relative;width:100%;height:100%;transition:transform .6s cubic-bezier(.4,0,.2,1);-webkit-transform-style:preserve-3d;transform-style:preserve-3d;}
+    .flip.flipped .flip-inner{transform:rotateY(180deg);}
+    .face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;transform:rotateY(0deg);border-radius:8px;overflow:hidden;
+      transition:visibility 0s .27s;}
+    .flip.flipped .face.card{visibility:hidden;}
+    .flip:not(.flipped) .face-back{visibility:hidden;}
+
+    .card{background:#dad7c8;border:1px solid rgba(0,0,0,.25);display:flex;flex-direction:column;container-type:size;}
+    .card-top{padding:24px 17px 0;display:flex;flex-direction:column;}
+    .card-head{display:flex;align-items:flex-start;justify-content:space-between;}
+    .title{font-family:'e-UkraineHead';font-size:25px;font-weight:400;}
+    .emblem{display:flex;align-items:flex-start;}
+    .emblem svg{height:36px;width:auto;display:block;}
+    .card-info{margin-top:17px;display:flex;align-items:flex-start;gap:16px;}
+    .card-photo{flex:0 0 44%;}
+    /* фото кропиться під формат (cover) і НЕ вище 36% висоти картки — інакше «розпирає»
+       фікс-пропорційну картку й обрізає бігучий рядок/низ (див. фікс 09-08) */
+    .card-photo img{display:block;width:100%;aspect-ratio:3/4;max-height:36cqh;object-fit:cover;border-radius:14px;background:#c3c0ad;}
+    .card:not(.has-photo) .card-photo{display:none;}
+    .card.has-photo .card-fields{margin-top:6px;}
+    .card-fields{flex:1 1 auto;min-width:0;}
+    .field-label{font-size:14px;color:var(--muted);}
+    .field-value{margin-top:6px;font-size:16px;}
+    .card-defer{margin-top:14px;}
+    .spacer-body{flex:1 1 0;min-height:0;}
+    .strip{background:var(--strip);overflow:hidden;white-space:nowrap;padding:3px 0;flex-shrink:0;}
+    /* безшовна стрічка: контент з двох однакових половин, зсув на -50% */
+    .marquee{display:inline-block;white-space:nowrap;font-size:14px;line-height:1.25;color:var(--text);animation:scroll 30s linear infinite;}
+    @keyframes scroll{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
+    /* статус «Військовозобовʼязаний» → золотисто-коричнева стрічка (колір з референсу) */
+    .strip.mil{background:#70480a;}
+    .strip.mil .marquee{color:#fbfdfc;}
+    /* стан «оновлення документа» — жовта стрічка */
+    .strip.upd{background:#f4d520;}
+    .strip.upd .marquee{color:#1a1a1a;}
+    .card-bottom{position:relative;padding:31px 17px 15px;flex-shrink:0;}
+    .status{font-size:14px;color:var(--muted);}
+    .name{margin-top:8px;}
+    .name b{display:block;font-size:21px;font-weight:500;line-height:25px;}
+    .name span{display:block;font-size:21px;font-weight:500;line-height:25px;}
+    .fab{position:absolute;right:16px;bottom:16px;width:39px;height:39px;border-radius:50%;background:var(--accent);border:none;display:flex;align-items:center;justify-content:center;transition:opacity .2s;}
+    .fab svg{width:21px;height:21px;}
+    .flip.flipped .fab{opacity:0;pointer-events:none;}
+
+    /* QR back face */
+    .face-back{transform:rotateY(180deg);background:#fff;border:1px solid rgba(0,0,0,.1);
+      display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:0 7% 5%;}
+    /* Оборот за макетом дизайнера (2026-09-30): заголовок вище, QR трохи вужчий (80%), знизу —
+       інфо-плашка «Використовуйте QR-код лише за потреби…». Картка фіксованої пропорції 3819:5137,
+       %-відступи рахуються від ШИРИНИ: 11 + ~6.4 (заголовок) + 5.5 + 80 + 6 + ~24 (плашка) + 5 ≈ 134 → влазить. */
+    /* 2026-10-02 фікс «заголовок обрізаний»: заголовок+QR+плашка не влазили по висоті картки (особливо
+       iPhone з «Збільшеним» масштабом екрана, 320pt) → flex стискав заголовок (overflow:hidden) до нуля.
+       Тепер заголовок і плашка НЕ стискаються, а QR — гумовий: займає рівно залишок висоти, лишаючись
+       квадратом (height з flex, ширина з aspect-ratio, не ширше 86%). Шрифт плашки масштабується від ширини картки. */
+    .face-back,#qrFlat{container-type:size;}
+    .qr-title{flex-shrink:0;font-size:min(16px,4.6cqw);font-weight:400;text-align:center;margin-top:9%;line-height:1.3;padding:0 6px;white-space:nowrap;overflow:hidden;width:100%;}
+    .qr-canvas{flex:1 1 0;min-height:0;height:auto;width:auto;max-width:86%;aspect-ratio:1;object-fit:contain;margin-top:6%;margin-bottom:5%;}
+    .qr-note{flex-shrink:0;width:100%;box-sizing:border-box;display:flex;align-items:center;gap:12px;
+      background:#c9c6b1;border:1px solid rgba(0,0,0,.28);border-radius:12px;padding:12px 14px;
+      font-size:min(15.5px,4.5cqw);line-height:1.3;font-weight:400;color:#1a1a1a;text-align:left;}
+    .qr-note .ic{flex:none;width:32px;height:32px;border:1.6px solid #1a1a1a;border-radius:6px;display:flex;align-items:center;justify-content:center;
+      font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:21px;line-height:1;padding-bottom:2px;}
+    /* Плоский шар з чітким QR ПОВЕРХ карти (дитина .flip, НЕ в preserve-3d):
+       iOS растеризує 3D-грань у низькій роздільності → щільний QR = «сіра сітка».
+       Плоский шар рендериться нативно й чітко. Показуємо після завершення фліпу. */
+    #qrFlat{position:absolute;inset:0;background:#fff;border-radius:8px;overflow:hidden;display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding:0 7% 5%;z-index:6;}
+    #qrFlat.show{display:flex;}
+
+    /* list page (Сервіси) */
+    .page-title{padding:calc(max(14px,env(safe-area-inset-top)) + 18px) 22px 0;font-size:34px;font-weight:700;letter-spacing:-.4px;}
+    .page-sub{padding:3px 22px 0;font-size:16px;color:var(--muted);}
+    [data-screen="services"] .page-title{font-family:'e-UkraineHead';font-size:28px;font-weight:400;line-height:35px;padding:calc(max(14px,env(safe-area-inset-top)) + 24px) 24px 0;}
+    .svc-list{margin-top:16px;}
+    .svc-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;background:none;border:none;color:var(--text);font-size:16px;font-weight:500;line-height:22px;text-align:left;padding:21.5px 24px;}
+    .svc-row .chev{flex:none;color:#1a1a1a;}
+    .svc-row .chev svg{width:24px;height:24px;display:block;margin:-1px 0;}
+    .svc-div{height:1px;background:rgba(0,0,0,.062);margin:0 24px;}
+
+    /* menu page */
+    [data-screen="menu"] .page-title{font-family:'e-UkraineHead';font-size:25px;font-weight:400;line-height:31px;padding:calc(max(14px,env(safe-area-inset-top)) + 16px) 24px 0;}
+    .page-sub{padding:7px 24px 0;font-size:12px;color:#73736a;}
+    .menu-group{margin:12px 24px 0;background:var(--white);border-radius:13px;overflow:hidden;}
+    .page-sub + .menu-group{margin-top:22px;}
+    .menu-row{display:flex;align-items:center;gap:17px;width:100%;background:none;border:none;color:var(--text);font-size:16px;font-weight:500;line-height:22px;text-align:left;padding:17.5px 20px;}
+    .menu-row .ic{flex:none;width:24px;height:24px;display:flex;align-items:center;justify-content:center;}
+    .menu-row .ic svg{width:24px;height:24px;}
+    .menu-row .lbl{flex:1 1 auto;}
+    .menu-row .chev{flex:none;color:#1a1a1a;}
+    .menu-row .chev svg{width:30px;height:30px;display:block;margin:-4px -2.5px -4px 0;}
+    .menu-div{height:1px;background:rgba(0,0,0,.11);margin:0 20px;}
+    .logout{display:block;margin:26px auto 0;background:#2c2b27;color:#fff;border:none;border-radius:24px;font-size:17px;font-weight:500;width:120px;height:47px;padding:0;}
+    .privacy{display:block;text-align:center;margin:10px 8px 24px;color:var(--text);font-size:15px;white-space:nowrap;text-decoration:underline;}
+
+    /* tab bar — плаваюча капсула (як у системного Резерв+): кремовий піл-бар на тлі --bg,
+       активна вкладка у світлішій округлій капсулі. ЄДИНИЙ вигляд для всіх пристроїв.
+       .tabbar — суцільна підкладка кольору екрана (--bg) на всю ширину + нижня safe-area,
+       щоб фон ЗА меню був злитий (без тёмної смуги body знизу); .tabwrap — сама капсула. */
+    .tabbar{background:var(--bg);padding:8px 12px max(12px,env(safe-area-inset-bottom));position:relative;z-index:2;flex:none;}
+    .tabwrap{display:flex;gap:2px;padding:9px 8px;border-radius:34px;background:#e9e6da;box-shadow:0 6px 22px rgba(0,0,0,.10);}
+    .tab{flex:1 1 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;background:none;border:none;color:#1a1a1a;font-size:13px;font-weight:500;line-height:1;padding:11px 0;position:relative;z-index:0;}
+    .tab.active{font-weight:700;}
+    .tab.active::before{content:'';position:absolute;inset:3px 5px;border-radius:26px;background:var(--white);z-index:-1;box-shadow:0 2px 7px rgba(0,0,0,.06);}
+    .tab .ic{height:24px;display:flex;align-items:center;justify-content:center;}
+    .tab svg{display:block;}
+    .tab .ion{display:none;}
+    .tab.active .ion{display:block;}
+    .tab.active .ioff{display:none;}
+
+    /* plus sheet */
+    .overlay{position:absolute;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;z-index:50;}
+    .overlay[hidden]{display:none;}
+    .sheet{width:calc(100% - 18px);margin:0 9px max(14px,env(safe-area-inset-bottom));background:#fff;border-radius:16px;padding:16px 0 16px;animation:up .25s ease;transition:transform .28s cubic-bezier(.3,.7,.4,1);}
+    .sheet.drag{transition:none;}
+    @keyframes up{from{transform:translateY(110%);}to{transform:translateY(0);}}
+    .handle{width:39px;height:3.5px;border-radius:2px;background:#1c1b17;margin:0 auto 12px;}
+    .sheet-row{display:flex;align-items:center;gap:24px;width:100%;background:none;border:none;color:var(--text);font-size:14px;font-weight:500;text-align:left;padding:15px 26px;}
+    .sheet-row svg{flex:none;width:26px;height:26px;}
+    .sheet-title{padding:8px 26px 18px;color:var(--text);font-size:22px;font-weight:600;line-height:1.32;}
+    .sheet-hr{height:1px;background:#e4e1d6;margin:0 26px 8px;}
+    #scanOverlay .sheet-row{font-size:16px;line-height:22px;gap:20px;}
+
+    /* document view (Переглянути документ) */
+    .doc-overlay{position:absolute;inset:0;background:#000;z-index:54;}
+    .doc-overlay[hidden]{display:none;}
+    .docview{position:absolute;left:0;right:0;bottom:0;top:calc(max(14px,env(safe-area-inset-top)) + 10px);z-index:55;
+      background:var(--bg);border-radius:12px 12px 0 0;display:flex;flex-direction:column;overflow:hidden;
+      transition:transform .32s cubic-bezier(.3,.7,.4,1);}
+    .docview.drag{transition:none;}
+    .docview[hidden]{display:none;}
+    .doc-handle{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:50px;height:5px;border-radius:3px;background:#111;z-index:5;}
+    .doc-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+    .doc-head{display:flex;align-items:flex-start;justify-content:space-between;padding:30px 24px 20px;}
+    .doc-head .emblem svg{height:36px;}
+    .doc-cards{padding:12px 24px calc(40px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;}
+    .dvcard{background:var(--white);border-radius:14px;padding:17px;font-size:14px;line-height:17px;}
+    .dvcard .dvname{font-size:21px;font-weight:500;line-height:25px;}
+    .dvrow{margin-top:19px;}
+    .dvval{margin-top:8px;}
+    .dvkv{display:flex;align-items:flex-start;}
+    .dvkv .k{flex:1 1 auto;padding-right:8px;}
+    .dvkv .v{width:40%;flex:none;}
+    .dvdiv{height:1px;background:rgba(0,0,0,.08);margin:17px -17px;}
+    .dvcheck{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:500;}
+    .dvtick{width:19px;height:19px;border-radius:50%;background:#3ea832;color:#fff;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;flex:none;}
+    /* ===== скан-результат: військово-обліковий документ (формат макета) ===== */
+    .sd-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:32px 24px 14px;}
+    .sd-title{font-family:'e-UkraineHead';font-size:33px;font-weight:700;line-height:1.14;letter-spacing:-.5px;color:#111;}
+    .sd-emblem{flex:none;}
+    .sd-emblem svg{height:52px;width:auto;display:block;}
+    /* карточки крупніші за «Переглянути документ» — під макет */
+    .scandoc .doc-cards{gap:12px;}
+    .scandoc .dvcard{border-radius:18px;padding:20px 20px;font-size:17px;line-height:22px;}
+    .scandoc .dvname{font-size:25px;font-weight:600;line-height:1.16;letter-spacing:-.3px;}
+    .scandoc .dvname .sd-fio{text-transform:uppercase;}   /* прізвище+ім'я ЗАГОЛОВНИМИ, як у макеті; вага 600 (капс сам додає візуальну жирність) */
+    .scandoc .dvname .sd-patr{font-weight:400;text-transform:none;}
+    .scandoc .dvsub{margin-top:14px;font-size:17px;color:#33322e;}
+    .scandoc .dvrow{margin-top:16px;}
+    .scandoc .dvval{margin-top:7px;font-weight:500;}
+    .scandoc .dvkv{gap:12px;}
+    .scandoc .dvkv .k{color:#33322e;}
+    .scandoc .dvkv .v{width:auto;margin-left:auto;text-align:right;font-weight:500;color:#111;}
+    .scandoc .dvkv+.dvkv{margin-top:14px;}
+    .scandoc .dvcheck{font-size:17px;}
+    .scandoc .dvtick{width:22px;height:22px;font-size:13px;}
+
+    /* фото + дані праворуч у «Переглянути документ» */
+    .dv-idrow{display:flex;gap:14px;margin-top:17px;}
+    .dv-photo{flex:0 0 38%;}
+    .dv-photo img{display:block;width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:14px;background:#c3c0ad;}
+    .dv-idcol{flex:1 1 auto;min-width:0;}
+    .dv-idcol .dvrow{margin-top:16px;}
+
+    /* update-document modal */
+    .overlay2{position:absolute;inset:0;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;z-index:60;padding:0 23px;}
+    .overlay2[hidden]{display:none;}
+    .upd-modal{width:100%;background:#fff;border-radius:28px;padding:24px 24px 27px;text-align:center;animation:pop .2s ease;}
+    @keyframes pop{from{transform:scale(.94);opacity:0;}to{transform:scale(1);opacity:1;}}
+    .upd-ic{width:44px;height:44px;margin:0 auto;}
+    .upd-ic svg{width:44px;height:44px;display:block;}
+    .upd-text{margin-top:22px;font-size:14px;font-weight:500;line-height:20px;}
+    .upd-btn{display:block;width:100%;margin-top:23px;height:63px;border:none;border-radius:32px;background:#ed8d36;color:#151310;font-size:17px;font-weight:500;}
+    .upd-cancel{display:block;margin:22px auto 0;background:none;border:none;font-size:17px;font-weight:500;color:#000;}
+
+    /* ===== detail page ===== */
+    .detail{position:absolute;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;}
+    .detail[hidden]{display:none;}
+    .detail .dscroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:8px;}
+    .dhead{padding:max(14px,env(safe-area-inset-top)) 22px 0;display:flex;align-items:flex-start;justify-content:space-between;}
+    .iconbtn{width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.06);border:none;display:flex;align-items:center;justify-content:center;flex:none;}
+    .iconbtn svg{width:22px;height:22px;}
+    .dtitle{padding:14px 22px 0;font-family:'e-UkraineHead';font-size:28px;font-weight:400;line-height:1.2;}
+    .dbody{padding:18px 22px 0;font-size:16px;line-height:22px;}
+    .dbody p{margin-bottom:14px;}
+    .dbody ul{margin:6px 0 0 4px;padding-left:20px;line-height:20px;}
+    .dbody li{margin-bottom:2px;}
+    .dcard{margin:18px 22px 0;background:var(--white);border-radius:18px;overflow:hidden;}
+    .drow{display:flex;align-items:flex-start;gap:12px;width:100%;background:none;border:none;text-align:left;color:var(--text);padding:18px 18px;}
+    .drow .dtxt{flex:1 1 auto;min-width:0;}
+    .drow .dtxt{display:flex;flex-direction:column;}
+    .drow .dt{display:block;font-size:18px;font-weight:500;line-height:1.25;}
+    .drow .ds{display:block;margin-top:5px;font-size:15px;color:var(--muted);line-height:1.32;}
+    .drow .chev{flex:none;align-self:center;color:#1a1a1a;}
+    .ddiv{height:1px;background:var(--divider-soft);margin:0 18px;}
+    .field-block{margin:18px 22px 0;}
+    .field-block .fl{font-size:14px;color:var(--muted);margin-bottom:8px;}
+    .field-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;background:var(--white);border:none;border-radius:14px;padding:17px 18px;color:var(--text);font-size:16px;text-align:left;}
+    .field-row .chev{flex:none;color:#1a1a1a;}
+    /* активні сесії */
+    .sess-h{display:flex;align-items:center;gap:9px;font-size:16px;font-weight:500;}
+    .sess-dot{width:9px;height:9px;border-radius:50%;background:#3ea832;flex:none;}
+    .sess-os{margin-top:12px;font-size:17px;font-weight:500;}
+    .drow .ds+.ds{margin-top:2px;}
+    /* налаштування: рядок + тумблер */
+    .set-row{display:flex;align-items:center;gap:14px;width:100%;background:none;border:none;text-align:left;color:var(--text);font-size:16px;font-weight:500;line-height:1.3;padding:17px 18px;}
+    .set-row .set-lbl{flex:1 1 auto;min-width:0;}
+    .tgl{flex:none;width:50px;height:30px;border-radius:15px;background:#cfccbb;position:relative;transition:.2s;border:none;padding:0;}
+    .tgl::after{content:"";position:absolute;top:2px;left:2px;width:26px;height:26px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2);}
+    .tgl.on{background:#3ea832;}
+    .tgl.on::after{left:22px;}
+    /* служба підтримки */
+    .supp-lead{padding:14px 22px 0;font-size:17px;font-weight:500;line-height:1.4;}
+    .supp-card{margin:22px 22px 0;background:var(--white);border-radius:16px;}
+    .supp-viber{display:flex;align-items:center;gap:14px;width:100%;background:none;border:none;text-align:left;color:var(--text);font-size:17px;font-weight:500;padding:18px 18px;}
+    .supp-viber .vi{width:34px;height:34px;flex:none;}
+    .supp-copy{display:flex;align-items:center;gap:14px;width:100%;background:none;border:none;text-align:left;color:var(--text);font-size:16px;font-weight:500;padding:16px 22px;margin-top:6px;}
+    .supp-copy svg{width:22px;height:22px;flex:none;}
+    .dbottom{flex:none;padding:10px 22px max(14px,env(safe-area-inset-bottom));}
+    .infobox{display:flex;align-items:center;gap:14px;background:#d9d6c5;border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:15px 18px;margin-bottom:14px;font-size:15px;line-height:1.35;}
+    .infobox svg{flex:none;width:24px;height:24px;}
+    .checkrow{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:14px;font-size:16px;}
+    .checkbox{width:24px;height:24px;border:2px solid #000;border-radius:7px;flex:none;}
+    .cta{display:block;width:100%;background:var(--accent);color:#1a1a1a;border:none;border-radius:28px;font-size:16px;font-weight:500;padding:18px;text-align:center;}
+    /* ===== splash (МОУ) ===== */
+    .splash{position:absolute;inset:0;z-index:100;background:#23221e;display:flex;align-items:center;justify-content:center;transition:opacity .3s ease;}
+    .splash.hide{opacity:0;pointer-events:none;}
+    .splash-inner{display:flex;flex-direction:column;align-items:center;text-align:center;}
+    .splash-inner svg{height:43px;width:auto;display:block;}
+    .splash-inner .st{margin-top:21px;font-family:'e-UkraineHead';font-size:24px;font-weight:500;line-height:28.5px;color:#dfddca;}
+
+    /* ===== lock (Код для входу) ===== */
+    .lock{position:absolute;inset:0;z-index:90;background:var(--bg);transition:opacity .35s ease;}
+    .lock.hide{opacity:0;pointer-events:none;}
+    .lock-title{position:absolute;top:24.1%;left:0;right:0;text-align:center;font-family:'e-UkraineHead';font-size:25px;font-weight:400;}
+    .lock-dots{position:absolute;top:34.8%;left:0;right:0;display:flex;justify-content:center;gap:22px;}
+    .lock-dots i{width:11px;height:11px;border-radius:50%;background:var(--white);transition:background .12s;}
+    .lock-dots i.on{background:#000;}
+    .lock-dots.shake{animation:shk .4s;}
+    @keyframes shk{0%,100%{transform:translateX(0);}20%,60%{transform:translateX(-8px);}40%,80%{transform:translateX(8px);}}
+    .keypad{position:absolute;top:44.9%;left:50%;transform:translateX(-50%);display:grid;grid-template-columns:repeat(3,72px);column-gap:23px;row-gap:16px;}
+    .key{width:72px;height:72px;border-radius:50%;background:var(--white);border:none;font-size:27px;font-weight:400;color:#000;display:flex;align-items:center;justify-content:center;font-family:inherit;padding:0;}
+    .key:active{background:#d9d6c5;}
+    .key-ghost{background:none;border:none;display:flex;align-items:center;justify-content:center;padding:0;}
+    .key-ghost:active{opacity:.55;}
+    .key-ghost svg{display:block;}
+    .lock-forgot{position:absolute;left:0;right:0;bottom:max(52px,calc(env(safe-area-inset-bottom) + 26px));text-align:center;font-size:16px;color:#000;background:none;border:none;font-family:inherit;width:100%;}
+    /* provision / subscription screens */
+    .prov,.subx{position:absolute;inset:0;z-index:92;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:0 32px;}
+    .prov[hidden],.subx[hidden]{display:none;}
+    .prov-inner{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;text-align:center;}
+    .prov-emblem{height:64px;width:auto;margin-bottom:22px;}
+    .prov-title{font-family:'e-UkraineHead';font-size:25px;font-weight:400;}
+    .subx-title{font-family:'e-UkraineHead';font-size:23px;font-weight:400;}
+    .prov-sub{margin-top:8px;font-size:15px;color:var(--muted);line-height:20px;}
+    .prov-input{margin-top:24px;width:100%;height:52px;border-radius:14px;border:1px solid rgba(0,0,0,.18);background:var(--white);text-align:center;font-family:inherit;font-size:18px;color:#000;letter-spacing:1px;}
+    .prov-input:focus{outline:none;border-color:#000;}
+    .prov-btn{margin-top:14px;width:100%;height:52px;border:none;border-radius:26px;background:#2c2b27;color:#fff;font-family:inherit;font-size:16px;font-weight:500;}
+    .subx .prov-btn{background:var(--accent);color:#1a1a1a;}
+    .prov-err{margin-top:14px;font-size:14px;color:#c0392b;}
+    .prov-err[hidden]{display:none;}
+    /* Android: банер установки в 1 дотик (показується лише коли браузер це підтримує) */
+    #installBar{position:fixed;left:0;right:0;top:0;z-index:9999;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0));background:linear-gradient(180deg,#2c2b27,#201f1c);box-shadow:0 4px 18px rgba(0,0,0,.28);}
+    #installBar[hidden]{display:none;}
+    #installBtn{display:flex;width:100%;max-width:520px;margin:0 auto;align-items:center;justify-content:center;gap:9px;min-height:56px;border:none;border-radius:16px;background:var(--accent);color:#1a1a1a;font-family:inherit;font-size:17px;font-weight:600;line-height:1.2;box-shadow:0 2px 0 rgba(0,0,0,.15);}
+    #installBtn:active{transform:translateY(1px);}
+    #installHint{max-width:520px;margin:6px auto 0;text-align:center;color:#e6e3d6;font-size:12.5px;opacity:.85;}
+    /* iPhone: текстова інструкція установки */
+    .inst-text{margin-top:16px;width:100%;text-align:left;}
+    .inst-text p{font-size:15px;line-height:1.5;color:#2c2b27;margin:0 0 12px;}
+    .inst-text b{color:#000;}
+    .inst-code{font-size:13px;color:var(--muted);background:rgba(0,0,0,.04);border-radius:12px;padding:11px 13px;margin-top:4px !important;}
+    .inst-warn{font-size:14px;line-height:1.45;color:#8a4b00;background:rgba(252,137,12,.12);border:1px solid rgba(252,137,12,.35);border-radius:12px;padding:11px 13px;}
+    /* face id modal */
+    .fidwrap{position:absolute;inset:0;z-index:95;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.10);}
+    .fidwrap[hidden]{display:none;}
+    .fidbox{width:150px;height:150px;border-radius:34px;background:rgba(251,253,252,.95);box-shadow:0 12px 44px rgba(0,0,0,.20);display:flex;align-items:center;justify-content:center;}
+    .fidbox svg{width:76px;height:76px;}
+    @keyframes fidpulse{0%,100%{transform:scale(1);}50%{transform:scale(.88);}}
+    .fidbox.scan svg{animation:fidpulse .5s ease-in-out 2;}
+
+    /* ===== vacancies ===== */
+    .vac-head{position:relative;padding:calc(max(14px,env(safe-area-inset-top)) + 8px) 70px 0 24px;flex:none;}
+    .vac-title{font-family:'e-UkraineHead';font-size:25px;font-weight:400;line-height:30px;}
+    .vac-search{position:absolute;right:22px;top:calc(max(14px,env(safe-area-inset-top)) + 10px);width:41px;height:41px;border-radius:50%;background:var(--white);border:none;display:flex;align-items:center;justify-content:center;padding:0;}
+    .vac-search svg{width:19px;height:19px;}
+    .vac-tabs{display:flex;gap:24px;margin-top:33px;padding:0 24px;border-bottom:1.5px solid #918e7f;overflow-x:auto;overflow-y:hidden;overscroll-behavior:contain;white-space:nowrap;flex:none;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+    .vac-tabs::-webkit-scrollbar{display:none;}
+    .vac-tab{font-size:15px;font-weight:400;color:var(--muted);padding:0 0 12px;border:none;border-bottom:2px solid transparent;margin-bottom:-1.5px;display:inline-flex;align-items:center;gap:6px;flex:none;background:none;font-family:inherit;}
+    .vac-tab.active{color:#000;font-weight:500;border-color:#000;}
+    .vdot{width:5px;height:5px;border-radius:50%;background:var(--accent);}
+    /* swipeable panes */
+    .vac-viewport{flex:1 1 auto;min-height:0;overflow:hidden;}
+    .vac-swipe{display:flex;height:100%;column-gap:29px;will-change:transform;transition:transform .35s cubic-bezier(.25,.1,.25,1);}
+    .vac-swipe.drag{transition:none;}
+    .vac-pane{flex:0 0 100%;min-width:0;position:relative;display:flex;flex-direction:column;}
+    .vac-card{position:relative;flex:1 1 auto;min-height:0;margin:18px 22px 0;background:var(--white);border-radius:24px 24px 0 0;padding:19px 22px 0;}
+    .vac-h2{text-align:center;font-size:17px;font-weight:500;}
+    .vac-grid{width:271px;margin:42px auto 0;display:grid;grid-template-columns:repeat(3,1fr);row-gap:14px;justify-items:center;align-items:start;}
+    .vac-grid img{display:block;}
+    .vc{display:flex;align-items:flex-start;justify-content:center;}
+    .vc-more span{width:41px;height:41px;border-radius:50%;background:#1c1b17;color:#fff;font-size:15px;font-weight:500;display:flex;align-items:center;justify-content:center;}
+    .vc-more{align-self:center;}
+    .vac-btn{position:absolute;left:22px;right:22px;top:450px;height:57px;border:none;border-radius:28.5px;background:var(--accent);color:#1a1a1a;font-size:16px;font-weight:500;font-family:inherit;}
+    /* всі вакансії: список */
+    .vac-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:15px 22px 130px;}
+    .vac-lcard{background:var(--white);border-radius:20px;margin-bottom:9px;padding:14px 18px 16px 17px;display:flex;align-items:flex-start;gap:12px;}
+    .vac-lcard img{flex:none;margin-top:6px;}
+    .vac-ltxt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;}
+    .vac-lt{display:block;font-size:16px;font-weight:500;line-height:1.25;}
+    .vac-ls{display:block;margin-top:5px;font-size:15px;font-weight:400;line-height:1.32;}
+    .vac-fabs{position:absolute;left:0;right:0;bottom:30px;display:flex;justify-content:center;gap:8px;pointer-events:none;}
+    .vac-fab{pointer-events:auto;height:43px;padding:0 21px;border-radius:22px;background:rgba(26,25,21,.93);color:#fff;font-size:16px;font-weight:500;display:flex;align-items:center;gap:10px;border:none;font-family:inherit;}
+    .vac-fab svg{width:20px;height:20px;}
+
+    /* ===== dev mode ===== */
+    .dev{position:absolute;inset:0;z-index:94;background:var(--bg);display:flex;flex-direction:column;}
+    .dev[hidden]{display:none;}
+    .dev-head{flex:none;display:flex;align-items:center;justify-content:space-between;padding:calc(max(14px,env(safe-area-inset-top)) + 6px) 20px 10px;}
+    .dev-title{font-family:'e-UkraineHead';font-size:22px;}
+    .dev-x{width:36px;height:36px;border-radius:50%;border:none;background:var(--white);font-size:16px;font-family:inherit;}
+    .dev-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:0 16px calc(env(safe-area-inset-bottom) + 30px);}
+    .dev-sec{margin-top:16px;margin-bottom:6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:0 4px;}
+    .dev-auto{width:100%;height:50px;margin-top:6px;border:none;border-radius:14px;background:var(--accent);color:#1a1a1a;font-size:15px;font-weight:500;font-family:inherit;}
+    .dev-roles{display:flex;flex-wrap:wrap;gap:8px;}
+    .dev-role{flex:1 1 calc(50% - 4px);min-width:110px;min-height:46px;padding:6px 8px;border-radius:14px;border:1.5px solid rgba(0,0,0,.15);background:var(--white);font-family:inherit;font-size:13.5px;line-height:1.25;}
+    .dev-role.on{background:#2c2b27;color:#fff;border-color:#2c2b27;}
+    .dev-row{background:var(--white);border-radius:14px;padding:10px 14px;margin-top:8px;}
+    .dev-row-top{display:flex;align-items:center;gap:10px;}
+    .dev-lbl{flex:1 1 auto;min-width:0;}
+    .dev-k{font-size:12px;color:var(--muted);}
+    .dev-v{font-size:14px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .dev-edit{flex:none;height:32px;padding:0 14px;border-radius:16px;border:none;background:#e7e4d3;font-family:inherit;font-size:13px;}
+    .dev-editor{display:flex;gap:8px;margin-top:10px;}
+    .dev-in{flex:1 1 auto;min-width:0;height:40px;border-radius:10px;border:1px solid rgba(0,0,0,.18);padding:0 10px;font-family:inherit;font-size:16px;background:#fff;}  /* 16px: iOS не зумить сторінку при фокусі */
+    .dev-in:focus{outline:none;border-color:#000;}
+    .dev-ok{height:40px;padding:0 14px;border:none;border-radius:10px;background:#2c2b27;color:#fff;font-family:inherit;font-size:13px;}
+    .dev-cancel{height:40px;padding:0 12px;border:none;border-radius:10px;background:#e7e4d3;font-family:inherit;font-size:13px;}
+    .dev-foot{margin-top:18px;display:flex;flex-direction:column;gap:8px;}
+    .dev-reset{height:46px;border-radius:14px;border:1.5px solid rgba(0,0,0,.15);background:none;font-family:inherit;font-size:14px;}
+    .dev-exit{height:50px;border:none;border-radius:14px;background:#2c2b27;color:#fff;font-size:15px;font-family:inherit;}
+    .toastmsg{position:absolute;left:16px;right:16px;bottom:max(24px,calc(env(safe-area-inset-bottom) + 12px));z-index:97;background:#2c2b27;color:#fff;border-radius:14px;padding:13px 16px;font-size:14px;line-height:1.45;box-shadow:0 8px 30px rgba(0,0,0,.25);opacity:0;transform:translateY(12px);transition:.25s;pointer-events:none;}
+    /* модалка підтвердження дев-режиму */
+    .dev-confirm{position:absolute;inset:0;z-index:98;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:0 26px;}
+    /* Преміум-модалка (гейт генерації PDF) */
+    .prem-modal{position:absolute;inset:0;z-index:99;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:0 26px;}
+    .prem-modal[hidden]{display:none;}
+    .prem-box{width:100%;max-width:340px;background:var(--white);border-radius:18px;padding:26px 22px 18px;text-align:center;}
+    .prem-ic{font-size:44px;line-height:1;margin-bottom:10px;}
+    .prem-ttl{font-family:'e-UkraineHead';font-size:19px;font-weight:700;color:#1a1a1a;}
+    .prem-msg{margin-top:10px;font-size:14px;line-height:1.5;color:#3c3c3c;}
+    .prem-cta{margin-top:18px;width:100%;border:none;border-radius:12px;background:#2c2b27;color:#fff;font-family:inherit;font-size:16px;font-weight:600;padding:14px;}
+    .prem-close{margin-top:8px;width:100%;border:none;border-radius:12px;background:none;color:#0a84ff;font-family:inherit;font-size:15px;font-weight:600;padding:11px;}
+    .dev-confirm[hidden]{display:none;}
+    .dev-confirm-box{width:100%;max-width:340px;background:var(--white);border-radius:18px;padding:22px 20px 16px;}
+    .dev-confirm-msg{font-size:15px;line-height:1.5;color:#1a1a1a;white-space:pre-line;}
+    .dev-confirm-btns{display:flex;gap:10px;margin-top:18px;}
+    .dev-confirm-btns button{flex:1;height:46px;border:none;border-radius:12px;font-family:inherit;font-size:15px;font-weight:500;}
+    .dev-confirm-cancel{background:#e7e4d3;color:#1a1a1a;}
+    .dev-confirm-ok{background:#2c2b27;color:#fff;}
+    .toastmsg.show{opacity:1;transform:none;}
+
+    /* ===== СКАНЕР QR (камера) ===== */
+    /* Повноекранний absolute-шар (без fixed — правило заниженого viewport).
+       Відео йде під статус-бар (шапка телефона просвічує), UI з відступом safe-area. */
+    .scanview{position:absolute;inset:0;z-index:98;background:#111;overflow:hidden;}
+    .scanview[hidden]{display:none;}
+    .scan-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111;}
+    /* легке затемнення поверх кадру для контрасту білого тексту й рамки */
+    .scan-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.15) 22%,rgba(0,0,0,.15) 70%,rgba(0,0,0,.35));pointer-events:none;}
+    .scan-ui{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;}
+    .scan-top{width:100%;display:flex;align-items:center;justify-content:center;position:relative;padding:calc(max(14px,env(safe-area-inset-top)) + 14px) 20px 0;}
+    .scan-title{color:#fff;font-size:24px;font-weight:600;letter-spacing:-.2px;}
+    .scan-x{position:absolute;right:16px;top:calc(max(14px,env(safe-area-inset-top)) + 8px);width:40px;height:40px;background:none;border:none;display:flex;align-items:center;justify-content:center;padding:0;}
+    .scan-x svg{width:26px;height:26px;}
+    .scan-hint{color:#fff;font-size:19px;font-weight:400;line-height:1.32;text-align:center;padding:22px 40px 0;max-width:360px;text-shadow:0 1px 6px rgba(0,0,0,.5);}
+    /* квадратна рамка з 4 кутами по центру */
+    .scan-frame{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(74vw,300px);aspect-ratio:1;}
+    .scan-frame .c{position:absolute;width:34px;height:34px;border:4px solid #fff;border-radius:2px;}
+    .scan-frame .tl{top:0;left:0;border-right:none;border-bottom:none;border-top-left-radius:14px;}
+    .scan-frame .tr{top:0;right:0;border-left:none;border-bottom:none;border-top-right-radius:14px;}
+    .scan-frame .bl{bottom:0;left:0;border-right:none;border-top:none;border-bottom-left-radius:14px;}
+    .scan-frame .br{bottom:0;right:0;border-left:none;border-top:none;border-bottom-right-radius:14px;}
+    .scan-err{position:absolute;left:24px;right:24px;bottom:calc(env(safe-area-inset-bottom) + 40px);background:rgba(20,19,17,.92);color:#fff;border-radius:14px;padding:16px 18px;font-size:15px;line-height:1.45;text-align:center;}
+    .scan-err[hidden]{display:none;}
+    /* Прихована зона утримання (лівий-нижній кут) — тригер власного документа для
+       позначених карток. Візуально невидима; для звичайних юзерів — інертна. */
+    .scan-hot{position:absolute;left:0;bottom:0;width:34%;max-width:150px;height:24%;max-height:180px;z-index:3;background:transparent;-webkit-tap-highlight-color:transparent;touch-action:none;}
+    .scan-err button{margin-top:12px;background:#fff;color:#111;border:none;border-radius:10px;padding:10px 18px;font-family:inherit;font-size:14px;font-weight:600;}
+
+    /* ===== PDF (військово-обліковий документ) ===== */
+    .pdfview{position:absolute;inset:0;z-index:96;background:#3a3a3c;display:flex;flex-direction:column;}
+    .pdfview[hidden]{display:none;}
+    .pdf-top{flex:none;display:flex;align-items:center;gap:10px;padding:calc(max(12px,env(safe-area-inset-top)) + 4px) 16px 12px;background:#fff;border-bottom:1px solid #e2e2e2;}
+    .pdf-ttl{flex:1 1 auto;min-width:0;text-align:center;font-size:15px;font-weight:600;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .pdf-x{flex:none;border:none;background:none;color:#0a84ff;font-size:16px;font-family:inherit;font-weight:600;padding:4px 6px;}
+    .pdf-dl{flex:none;border:none;background:none;color:#0a84ff;width:34px;height:34px;display:flex;align-items:center;justify-content:center;}
+    .pdf-dl svg{width:22px;height:22px;}
+    /* весь документ вписуємо в екран (перегляд PDF: зменшено, без свайпу) */
+    .pdf-scroll{flex:1 1 auto;min-height:0;overflow:hidden;display:flex;justify-content:center;align-items:flex-start;padding:8px 8px calc(env(safe-area-inset-bottom) + 8px);}
+    /* набрано фірмовим e-Ukraine — як у справжньому документі Резерв+.
+       Фіксована «сторінка» ~380pt, яку JS масштабує під екран. */
+    /* сторінка = справжній A4: 596px = 210мм (1px≈1pt). min-height A4 → футер притиснутий донизу */
+    .pdf-page{width:596px;min-height:843px;flex:none;box-sizing:border-box;background:#fff;color:#111;padding:28px 40px 26px;font-family:'e-Ukraine',-apple-system,'Helvetica Neue',Arial,sans-serif;font-size:10px;line-height:1.3;box-shadow:0 6px 30px rgba(0,0,0,.4);transform-origin:top center;position:relative;display:flex;flex-direction:column;}
+    /* Водяний знак «ДЕМО» — на картці документа й у PDF (демо-доступ, анти-абуз). */
+    .wm{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:6;}
+    .wm-in{position:absolute;top:-60%;left:-30%;width:170%;height:230%;transform:rotate(-30deg);
+      font-family:-apple-system,Arial,sans-serif;font-weight:800;font-size:26px;line-height:2.7;
+      color:rgba(198,12,12,.15);letter-spacing:2px;word-spacing:10px;overflow:hidden;}
+    /* Демо-доступ: ховаємо PDF і QR-пункти (шторка), QR-код документа теж недоступний */
+    body.is-demo .demo-hide{display:none!important;}
+    .pdf-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;}
+    .pdf-hd-l{display:flex;align-items:flex-start;gap:11px;min-width:0;}
+    .pdf-hd>*{min-width:0;}
+    .pdf-logo{font-family:'e-UkraineHead';font-size:21px;font-weight:700;letter-spacing:-.3px;line-height:1;}
+    .pdf-logo b{color:#000;font-weight:700;} .pdf-logo i{color:#f39200;font-style:normal;font-weight:700;}
+    .pdf-hd-sub{font-size:9px;font-weight:400;color:#4a4a4a;line-height:1.4;padding-top:1px;}
+    .pdf-mou{display:flex;align-items:center;gap:7px;flex:none;font-size:9px;font-weight:400;color:#111;text-align:left;line-height:1.2;}
+    .pdf-mou svg{width:18px;height:22px;flex:none;}
+    .pdf-mou span{white-space:nowrap;}
+    .pdf-badge{display:inline-block;border:1.2px solid #111;border-radius:5px;padding:2.5px 10px;font-size:9px;font-weight:500;}
+    .pdf-name{margin-top:7px;font-family:'e-UkraineHead';font-weight:700;line-height:1.12;}
+    .pdf-name span{display:block;font-size:19px;}
+    .pdf-name span+span{font-size:17px;margin-top:2px;}   /* по батькові — трохи дрібніше (як в оригіналі) */
+    .pdf-name b{text-transform:uppercase;font-weight:inherit;}
+    /* фото — ЛІВА колонка (як в оригіналі), праворуч бейдж/ПІБ/дата народж./категорія */
+    .pdf-id{display:flex;align-items:flex-start;gap:18px;margin-top:12px;}
+    .pdf-idr{min-width:0;flex:1;}
+    .pdf-idr .pdf-grid{margin-top:10px;}   /* у блоці особи ряди розріджені (звірено з оригіналом) */
+    .pdf-photo{flex:none;width:100px;}
+    .pdf-photo img{display:block;width:100%;aspect-ratio:34/43;object-fit:cover;background:#e5e2d6;}
+    .pdf-rule{height:1px;background:#111;margin:7px 0;}
+    .pdf-grid{display:grid;gap:8px 16px;margin-top:5px;}
+    .pdf-g3{grid-template-columns:2fr 1.75fr 1fr;}
+    /* рядок Звання/Оберіг/ВОС: колонки під позиції оригіналу (Оберіг ~53%, ВОС ~80% ширини) */
+    .pdf-g3ob{grid-template-columns:261px 144px 1fr;}
+    .pdf-g3ob .pdf-v{white-space:nowrap;}
+    .pdf-g2{grid-template-columns:1fr 1fr;}
+    /* повноширинні ряди на 2 колонки: права колонка притиснута до правого краю (як в оригіналі) */
+    .pdf-g2w{grid-template-columns:1fr 84px;}
+    .pdf-grid>*{min-width:0;}
+    .pdf-k{font-size:9px;font-weight:400;color:#7a7a7a;line-height:1.2;}
+    .pdf-v{font-size:10px;font-weight:500;margin-top:2px;line-height:1.2;word-break:break-word;overflow-wrap:anywhere;}
+    .pdf-full{margin-top:8px;}
+    .pdf-note{margin-top:7px;font-size:10px;font-weight:500;line-height:1.3;}
+    /* низ: адреса+email | телефон+дата уточнення | QR (3 колонки, як в оригіналі) */
+    .pdf-bottom{display:grid;grid-template-columns:1fr 118px 166px;grid-template-rows:auto auto 1fr;gap:18px 16px;margin-top:9px;align-items:start;}
+    .pdf-bottom>*{min-width:0;}
+    .pdf-qr{grid-row:1 / span 3;grid-column:3;justify-self:end;}
+    .pdf-qr canvas{width:166px;height:166px;max-width:100%;display:block;image-rendering:pixelated;}
+    .pdf-foot{margin-top:auto;padding-top:14px;font-size:8.5px;font-weight:400;color:#6f6f6f;line-height:1.5;}
+    /* друк (window.print) → повний масштаб, без transform */
+    @media print{ .pdf-page{transform:none !important;width:100% !important;} }
+    @media print{
+      /* без полів → браузер не друкує свої колонтитули (URL сайту, дата) */
+      @page{margin:0;}
+      /* html/body на екрані пофарбовані в темне (setRootBg) — на папері лише білий,
+         інакше низ аркуша під документом іде чорною заливкою */
+      html,body{background:#fff !important;}
+      body *{visibility:hidden !important;}
+      .pdfview,.pdfview *{visibility:visible !important;}
+      .pdfview{position:absolute;inset:auto;background:#fff;}
+      .pdf-top{display:none !important;}
+      .pdf-scroll{overflow:visible;padding:0;}
+      .pdf-page{box-shadow:none;max-width:none;margin:0;}
+    }
+
+    /* status (service unavailable) */
+    .status-page{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 30px;}
+    .status-circle{width:148px;height:148px;border-radius:50%;border:3px solid #b5b1a0;display:flex;align-items:center;justify-content:center;}
+    .status-circle svg{width:66px;height:66px;}
+    /* екран «Забули код» */
+    .forgot{position:absolute;inset:0;z-index:93;background:var(--bg);display:flex;flex-direction:column;padding:0 24px calc(env(safe-area-inset-bottom) + 26px);}
+    .forgot[hidden]{display:none;}
+    .forgot-body{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+    .forgot-title{margin-top:34px;font-family:'e-UkraineHead';font-size:28px;font-weight:400;line-height:1.2;}
+    .forgot-sub{margin-top:16px;font-size:17px;line-height:1.4;color:#2a2a2a;max-width:320px;}
+    .forgot-btns{flex:none;display:flex;flex-direction:column;gap:12px;}
+    .forgot-go{height:57px;border:none;border-radius:28.5px;background:var(--accent);color:#1a1a1a;font-family:inherit;font-size:17px;font-weight:500;}
+    .forgot-cancel{height:57px;border:1.5px solid rgba(0,0,0,.35);border-radius:28.5px;background:none;font-family:inherit;font-size:17px;font-weight:400;color:#1a1a1a;}
+    /* екран завантаження «з реєстру» */
+    .loadreg{position:absolute;inset:0;z-index:96;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;}
+    .loadreg[hidden]{display:none;}
+    .loadreg-box{width:84px;height:84px;border-radius:20px;background:#8a897b;display:flex;align-items:center;justify-content:center;}
+    .loadreg-spin{width:28px;height:28px;border-radius:50%;border:2.5px solid rgba(255,255,255,.45);border-top-color:#fff;animation:spin .8s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    .loadreg-label{margin-top:14px;background:#8a897b;color:#fff;border-radius:12px;padding:10px 15px;font-size:15px;font-weight:500;line-height:1.35;text-align:center;}
+    .status-title{margin-top:34px;font-family:'e-UkraineHead';font-size:27px;font-weight:400;line-height:1.2;}
+    .status-body{margin-top:18px;font-size:16px;line-height:22px;color:#2a2a2a;}
+
+    /* ═══ ПРАВИЛА ДЛЯ ЗАНИЖЕНОГО VIEWPORT (iOS standalone translucent) ═══
+       iOS КЛІПАЄ все position:fixed по краю заниженого viewport (873), а звичайний
+       потік і position:absolute малюються до фізичного низу (932) — доведено
+       v33/v34/v35. Тому:
+       ⚠️ ЖОДНИХ position:fixed для видимих елементів! Повноекранний шар =
+       position:absolute + inset:0 (body розтягнутий на var(--vpxe) і позиціонований).
+       Скрол документа (59px оверфлоу) глушать touch-action:none на body +
+       scroll-пін у <head>-скрипті; внутрішні скрол-зони працюють як завжди
+       (жест зупиняється на найближчому overflow-скролері). */
+  </style>
+  <script>
+    /* iOS 26+ (Liquid Glass): системний таб-бар у реальному Резерв+ — «плаваюча
+       капсула» з піл-підсвіткою активної вкладки. Клас .ios26 вмикає відповідні
+       стилі; на старіших iOS вигляд без змін. Ставимо у <head>, щоб без миготіння. */
+    (function(){
+      var m=(navigator.userAgent||'').match(/(?:iPhone|iPad|iPod).+?OS (\d+)[._]/);
+      if(m&&+m[1]>=26)document.documentElement.classList.add('ios26');
+    })();
+    /* Фікс заниженого viewport у standalone (iOS + black-translucent, pwacompat#36):
+       на СТАРТІ iOS може звітувати innerHeight = екран − статус-бар (873) і пізніше
+       мовчки виправити на повний (932) БЕЗ події resize (бачили v36: iH став 932,
+       а --vpx завис на 59 → все з'їхало за екран). Тому перераховуємо у декілька
+       моментів після старту. У здоровому стані ext=0 і розтяг вимкнений; у баг-стані
+       (873 назавжди) ext=59 і документ дотягується до фізичного низу. Тільки
+       standalone; ліміт 120px відсікає аномалії (клавіатура/браузерний хром). */
+    (function(){
+      function setVpx(){
+        if(!navigator.standalone) return;
+        /* Розтяг --vpx рахуємо ВІДНОСНО dynamic viewport (dvh), а не innerHeight.
+           На iOS 16+ (iPhone 14) dvh уже = фізичний екран → ext=0, БЕЗ переростягу
+           (раніше screen−innerHeight давало плюс і таб-бар з'їжджав за екран).
+           На старій iOS без підтримки dvh — fallback на innerHeight (стара поведінка,
+           без регресу перевірених пристроїв). */
+        var dvhPx = 0;
+        if(document.body){
+          var p = document.createElement('div');
+          p.style.cssText = 'position:absolute;top:0;left:0;width:0;visibility:hidden;height:100dvh';
+          document.body.appendChild(p); dvhPx = p.offsetHeight; p.remove();
+        }
+        if(!dvhPx) dvhPx = window.innerHeight;
+        var ext = screen.height - dvhPx;
+        /* поза діапазоном (клавіатура тощо) — не чіпаємо попереднє значення */
+        if(ext>=0 && ext<=120) document.documentElement.style.setProperty('--vpx', ext+'px');
+      }
+      setVpx();
+      window.addEventListener('resize', setVpx);
+      window.addEventListener('pageshow', setVpx);
+      document.addEventListener('visibilitychange', setVpx);
+      window.addEventListener('load', function(){
+        setVpx();
+        /* iOS править innerHeight мовчки — доміряємо ще кілька разів */
+        [100,300,600,1200].forEach(function(t){setTimeout(setVpx,t);});
+      });
+      /* пін скролу: документ має 59px оверфлоу (розтяг --vpxe), скролитись не має */
+      window.addEventListener('scroll', function(){
+        var se = document.scrollingElement || document.documentElement;
+        if(se.scrollTop || se.scrollLeft){ se.scrollTop = 0; se.scrollLeft = 0; }
+      }, {passive:true});
+    })();
+  </script>
+</head>
+<body>
+<div id="app">
+  <!-- RESERVE -->
+  <section class="screen" data-screen="reserve">
+    <div class="top">
+      <button class="notif">Сповіщення
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.6c-3.5 0-5.9 2.8-5.9 6.4 0 3.9-1.15 5.4-1.95 6.3-.45.5-.1 1.25.55 1.25h14.6c.65 0 1-.75.55-1.25-.8-.9-1.95-2.4-1.95-6.3 0-3.6-2.4-6.4-5.9-6.4z"/><path d="M9.6 18.7a2.45 2.45 0 0 0 4.8 0z"/></svg>
+      </button>
+    </div>
+    <div class="wrap">
+      <div class="gap-top"></div>
+      <div class="flip" id="flip">
+        <div class="flip-inner">
+          <!-- FRONT -->
+          <div class="face card">
+            <div class="card-top">
+              <div class="card-head">
+                <div class="title">Резерв ID</div>
+                <div class="emblem">
+                  <svg viewBox="40 25 120 147" xmlns="http://www.w3.org/2000/svg" aria-label="Емблема ЗСУ">
+                    <path fill="#000" d="M40 27 Q40 25 42 25 H158 Q160 25 160 27 V107 Q160 150 100 172 Q40 150 40 107 Z"/>
+                    <path fill="#dad7c8" d="M102.80 143.25 C103.87 141.74 105.91 137.92 107.35 134.78 L109.95 129.05 L124.72 128.78 L139.50 128.50 L139.76 89.25 C139.91 67.66 139.75 50.00 139.42 50.00 C137.78 50.00 132.78 54.53 130.21 58.35 C125.40 65.47 123.66 75.36 124.36 91.61 C124.69 99.25 125.08 106.85 125.23 108.50 L125.50 111.50 L117.04 111.50 L108.57 111.50 L109.04 93.00 C109.92 57.66 109.68 51.03 107.29 45.78 C106.11 43.19 104.65 40.49 104.04 39.78 C103.43 39.08 102.29 37.60 101.52 36.50 C100.12 34.53 100.07 34.53 98.30 37.00 C95.54 40.83 93.96 43.99 91.83 50.00 C89.95 55.28 89.93 56.56 91.09 82.14 C91.75 96.79 92.02 109.50 91.68 110.39 C91.18 111.69 89.48 112.00 82.91 112.00 L74.76 112.00 L75.52 102.25 C77.05 82.59 76.07 70.33 72.34 62.33 C69.86 57.02 63.56 50.00 61.27 50.00 C60.23 50.00 60.03 57.72 60.24 89.25 L60.50 128.50 L75.64 128.78 L90.78 129.05 L92.05 132.28 C93.79 136.67 99.31 146.00 100.17 146.00 C100.55 146.00 101.74 144.76 102.80 143.25 Z"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="card-info">
+                <div class="card-photo"><img id="mainPhoto" alt=""></div>
+                <div class="card-fields">
+                  <div class="field-label">Дата народження:</div>
+                  <div class="field-value" id="mainBirth">29.03.1995</div>
+                  <div class="card-defer" id="mainDeferBlock" hidden>
+                    <div class="field-label">Відстрочка до:</div>
+                    <div class="field-value" id="mainDefer"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="spacer-body"></div>
+            <div class="strip"><span class="marquee" id="mainMarquee">Документ оновлено&nbsp;&nbsp;•&nbsp;&nbsp;Документ оновлено&nbsp;&nbsp;•&nbsp;&nbsp;</span></div>
+            <div class="card-bottom">
+              <div class="status" id="mainStatus">Статус обліку</div>
+              <div class="name" id="mainName"><b>ПРІЗВИЩЕ</b><b>ІМ'Я</b><span>ПО БАТЬКОВІ</span></div>
+              <button class="fab" id="fabPlus"><svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3.2" stroke-linecap="round"><path d="M12 3.8v16.4M3.8 12h16.4"/></svg></button>
+            </div>
+          </div>
+          <!-- BACK (QR) -->
+          <div class="face face-back">
+            <div class="qr-title">QR-код дійсний до 8 травня 2027</div>
+            <canvas class="qr-canvas" id="qrCanvas" width="464" height="464"></canvas>
+            <img class="qr-canvas" id="qrImg" alt="" style="display:none;object-fit:contain;background:#fff">
+            <div class="qr-note"><span class="ic">i</span><span>Використовуйте QR-код лише за потреби та відповідально ставтеся до його поширення.</span></div>
+          </div>
+        </div>
+        <!-- Плоский шар з чітким QR поверх карти (поза 3D-грані) -->
+        <div id="qrFlat"><div class="qr-title"></div><canvas id="qrFlatCanvas" class="qr-canvas" width="464" height="464"></canvas><div class="qr-note"><span class="ic">i</span><span>Використовуйте QR-код лише за потреби та відповідально ставтеся до його поширення.</span></div></div>
+      </div>
+      <div class="gap-bottom"></div>
+    </div>
+  </section>
+
+  <!-- СЕРВІСИ -->
+  <section class="screen" data-screen="services" hidden>
+    <div class="scroll"><h1 class="page-title">Сервіси</h1><div class="svc-list" id="svcList"></div></div>
+  </section>
+
+  <!-- ВАКАНСІЇ -->
+  <section class="screen" data-screen="vacancies" hidden>
+    <div class="vac-head">
+      <h1 class="vac-title">Вакансії в<br>Силах оборони<br>України</h1>
+      <button class="vac-search" aria-label="Пошук">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.1" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.7"/><path d="m15.6 15.6 4.6 4.6"/></svg>
+      </button>
+    </div>
+    <div class="vac-tabs" id="vacTabs">
+      <button class="vac-tab" data-vi="0">Лінія дронів</button>
+      <button class="vac-tab" data-vi="1">ІТ-вертикаль</button>
+      <button class="vac-tab" data-vi="2"><i class="vdot"></i>Нові контракти</button>
+      <button class="vac-tab" data-vi="3">Для вас</button>
+      <button class="vac-tab" data-vi="4">Всі вакансії</button>
+    </div>
+    <div class="vac-viewport" id="vacVP">
+      <div class="vac-swipe" id="vacSwipe">
+        <!-- 0: Лінія дронів -->
+        <div class="vac-pane">
+          <div class="vac-card">
+            <div class="vac-h2">На вас чекають</div>
+            <div class="vac-grid">
+              <div class="vc"><img src="img/vac/akh.png" style="height:76px" alt=""></div>
+              <div class="vc"><img src="img/vac/k2.png" style="height:77px" alt=""></div>
+              <div class="vc"><img src="img/vac/ptahy.png" style="height:72px;margin-top:3px" alt=""></div>
+              <div class="vc"><img src="img/vac/raroh.png" style="height:76px" alt=""></div>
+              <div class="vc"><img src="img/vac/fenix.png" style="height:76px" alt=""></div>
+            </div>
+            <button class="vac-btn">Змінити перебіг подій</button>
+          </div>
+        </div>
+        <!-- 1: ІТ-вертикаль -->
+        <div class="vac-pane">
+          <div class="vac-card">
+            <div class="vac-h2">На вас чекають</div>
+            <div class="vac-grid">
+              <div class="vc"><img src="img/vac/trorange.png" style="height:74px" alt=""></div>
+            </div>
+            <button class="vac-btn">Змінити перебіг подій</button>
+          </div>
+        </div>
+        <!-- 2: Нові контракти -->
+        <div class="vac-pane">
+          <div class="vac-card">
+            <div class="vac-h2">На вас чекають</div>
+            <div class="vac-grid">
+              <div class="vc"><img src="img/vac/tryzub1.png" style="height:76px" alt=""></div>
+              <div class="vc"><img src="img/vac/tryzub2.png" style="height:76px" alt=""></div>
+              <div class="vc"><img src="img/vac/claws.png" style="height:76px" alt=""></div>
+              <div class="vc"><img src="img/vac/wolf.png" style="height:75px" alt=""></div>
+              <div class="vc"><img src="img/vac/flag.png" style="height:75px" alt=""></div>
+              <div class="vc"><img src="img/vac/ngu.png" style="height:75px" alt=""></div>
+              <div class="vc"><img src="img/vac/art.png" style="height:75px" alt=""></div>
+              <div class="vc"><img src="img/vac/xiii.png" style="height:72px;margin-top:2px" alt=""></div>
+              <div class="vc-more"><span>+636</span></div>
+            </div>
+            <button class="vac-btn">Змінити перебіг подій</button>
+          </div>
+        </div>
+        <!-- 3: Для вас -->
+        <div class="vac-pane">
+          <div class="vac-card">
+            <div class="vac-h2">На вас чекають</div>
+            <div class="vac-grid">
+              <div class="vc"><img src="img/vac/tryzub1.png" style="height:76px" alt=""></div>
+              <div class="vc"><img src="img/vac/tryzub2.png" style="height:76px" alt=""></div>
+              <div class="vc"><img src="img/vac/claws.png" style="height:76px" alt=""></div>
+              <div class="vc"><img src="img/vac/flag.png" style="height:75px" alt=""></div>
+              <div class="vc"><img src="img/vac/xiii.png" style="height:72px;margin-top:2px" alt=""></div>
+              <div class="vc"><img src="img/vac/hort.png" style="height:76px" alt=""></div>
+              <div class="vc"><img src="img/vac/nato.png" style="height:75px" alt=""></div>
+              <div class="vc"><img src="img/vac/knot.png" style="height:76px" alt=""></div>
+              <div class="vc-more"><span>+359</span></div>
+            </div>
+            <button class="vac-btn">Подивитись вакансії</button>
+          </div>
+        </div>
+        <!-- 4: Всі вакансії -->
+        <div class="vac-pane">
+          <div class="vac-list" id="vacList"></div>
+          <div class="vac-fabs">
+            <button class="vac-fab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16" opacity="0"/><path d="M4 7h3.5M10.5 7H20M4 12h9M17 12h3M4 17h5.5M12.5 17H20"/><circle cx="8.7" cy="7" r="1.9"/><circle cx="15" cy="12" r="1.9"/><circle cx="10.8" cy="17" r="1.9"/></svg>
+              Фільтр</button>
+            <button class="vac-fab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M5 7h14M7.5 12h9M10 17h4"/></svg>
+              Сортування</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- МЕНЮ -->
+  <section class="screen" data-screen="menu" hidden>
+    <div class="scroll">
+      <h1 class="page-title">Меню</h1>
+      <div class="page-sub">Версія 2.3.3</div>
+      <div class="menu-group">
+        <button class="menu-row"><span class="ic" data-i="phone"></span><span class="lbl">Активні сесії</span><span class="chev" data-i="chev"></span></button>
+        <div class="menu-div"></div>
+        <button class="menu-row"><span class="ic" data-i="gear"></span><span class="lbl">Налаштування</span><span class="chev" data-i="chev"></span></button>
+      </div>
+      <div class="menu-group">
+        <button class="menu-row"><span class="ic" data-i="faq"></span><span class="lbl">Питання та відповіді</span><span class="chev" data-i="chev"></span></button>
+        <div class="menu-div"></div>
+        <button class="menu-row"><span class="ic" data-i="support"></span><span class="lbl">Служба підтримки</span><span class="chev" data-i="chev"></span></button>
+        <div class="menu-div"></div>
+        <button class="menu-row"><span class="ic" data-i="copy"></span><span class="lbl">Копіювати номер пристрою</span></button>
+      </div>
+      <div class="menu-group" id="scanMenuGroup" hidden>
+        <button class="menu-row"><span class="ic" data-i="qr"></span><span class="lbl">Сканувати документ</span></button>
+      </div>
+      <button class="logout">Вийти</button>
+      <a class="privacy" href="#">Повідомлення про обробку персональних даних</a>
+    </div>
+  </section>
+</div>
+
+<!-- TAB BAR -->
+<nav class="tabbar" id="tabbar"><div class="tabwrap">
+  <button class="tab active" data-go="reserve">
+    <span class="ic">
+      <svg class="ion" width="20" height="24" viewBox="0 0 20 24"><rect width="20" height="24" rx="3.2" fill="currentColor"/><rect y="12" width="20" height="2.55" fill="#fbfdfc"/><rect y="17.1" width="20" height="2.55" fill="#fbfdfc"/></svg>
+      <svg class="ioff" width="20" height="24" viewBox="0 0 20 24" fill="currentColor"><rect x="1" y="1" width="18" height="22" rx="3.2" fill="none" stroke="currentColor" stroke-width="2"/><rect y="12" width="20" height="2.55"/><rect y="17.1" width="20" height="2.55"/></svg>
+    </span>Резерв ID</button>
+  <button class="tab" data-go="services">
+    <span class="ic">
+      <svg class="ion" width="22" height="24" viewBox="0 0 22 24" fill="currentColor"><rect width="9.9" height="11.3" rx="2.6"/><rect x="12.1" width="9.9" height="11.3" rx="2.6"/><rect y="13.1" width="9.9" height="10.9" rx="2.6"/><rect x="12.1" y="13.1" width="9.9" height="10.9" rx="2.6"/></svg>
+      <svg class="ioff" width="22" height="24" viewBox="0 0 22 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="1" width="7.9" height="9.3" rx="1.8"/><rect x="13.1" y="1" width="7.9" height="9.3" rx="1.8"/><rect x="1" y="14.1" width="7.9" height="8.9" rx="1.8"/><rect x="13.1" y="14.1" width="7.9" height="8.9" rx="1.8"/></svg>
+    </span>Сервіси</button>
+  <button class="tab" data-go="vacancies">
+    <span class="ic">
+      <svg width="20" height="24" viewBox="0 0 20 24"><rect x="1" y="1" width="18" height="22" rx="3.4" fill="none" stroke="currentColor" stroke-width="2"/><rect x="6.35" y="8.55" width="7.3" height="7.3" rx="1.4" transform="rotate(45 10 12.2)" fill="currentColor"/></svg>
+    </span>Вакансії</button>
+  <button class="tab" data-go="menu">
+    <span class="ic">
+      <svg width="20" height="24" viewBox="0 0 20 24" fill="currentColor"><rect y="4" width="20" height="2.55" rx="1.27"/><rect y="10.9" width="20" height="2.55" rx="1.27"/><rect y="17.8" width="20" height="2.55" rx="1.27"/></svg>
+    </span>Меню</button>
+</div></nav>
+
+<!-- PLUS SHEET -->
+<div class="overlay" id="plusOverlay" hidden>
+  <div class="sheet">
+    <div class="handle"></div>
+    <button class="sheet-row" id="rowView"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.9" stroke="#000" stroke-width="2.2"/><text x="12.6" y="16.6" text-anchor="middle" font-size="14.5" font-style="italic" font-weight="700" font-family="Georgia,'Times New Roman',serif" fill="#000">i</text></svg>Переглянути документ</button>
+    <button class="sheet-row demo-hide" id="rowDl"><svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M13.6 2.8H8.2a2.4 2.4 0 0 0-2.4 2.4v13.6a2.4 2.4 0 0 0 2.4 2.4h7.6a2.4 2.4 0 0 0 2.4-2.4V7.4Z"/><path d="M13.6 2.8v3.6a1 1 0 0 0 1 1h3.6"/></svg>Завантажити PDF</button>
+    <button class="sheet-row" id="rowUpd"><svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5.2 9.6A7.6 7.6 0 0 1 18 6.6"/><path d="M18.6 2.6l.3 4.4-4.4-.3"/><path d="M18.8 14.4A7.6 7.6 0 0 1 6 17.4"/><path d="M5.4 21.4l-.3-4.4 4.4.3"/></svg>Оновити документ</button>
+  </div>
+</div>
+
+<!-- SCAN SHEET (Сканувати документ) -->
+<div class="overlay" id="scanOverlay" hidden>
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="sheet-title">Який документ потрібно відсканувати?</div>
+    <div class="sheet-hr"></div>
+    <button class="sheet-row demo-hide"><svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"><path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8"/><path d="M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8"/><path d="M21 16v2.5a2.5 2.5 0 0 1-2.5 2.5H16"/><path d="M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16"/><g fill="#000" stroke="none"><rect x="8.1" y="8.1" width="3.1" height="3.1" rx=".6"/><rect x="12.8" y="8.1" width="3.1" height="3.1" rx=".6"/><rect x="8.1" y="12.8" width="3.1" height="3.1" rx=".6"/><rect x="12.8" y="12.8" width="3.1" height="3.1" rx=".6"/></g></svg>QR військово-облікового документа</button>
+    <button class="sheet-row demo-hide"><svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"><path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8"/><path d="M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8"/><path d="M21 16v2.5a2.5 2.5 0 0 1-2.5 2.5H16"/><path d="M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16"/><g stroke-width="1.6" stroke-linejoin="round"><path d="M9 7.6h4l2 2v6.8H9z"/><path d="M13 7.6v2h2"/><path d="M10.7 12.3h2.6M10.7 14.2h2.6" stroke-width="1.4"/></g></svg>QR паперової повістки</button>
+    <button class="sheet-row demo-hide"><svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"><path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8"/><path d="M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8"/><path d="M21 16v2.5a2.5 2.5 0 0 1-2.5 2.5H16"/><path d="M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16"/><g stroke-width="1.6" stroke-linejoin="round"><path d="M9 7.6h4l2 2v6.8H9z"/><path d="M13 7.6v2h2"/><path d="M10.7 12.3h2.6M10.7 14.2h2.6" stroke-width="1.4"/></g></svg>QR направлення на ВЛК</button>
+  </div>
+</div>
+
+<!-- DOCUMENT VIEW (Переглянути документ) -->
+<div class="doc-overlay" id="docOverlay" hidden></div>
+<div class="docview" id="docView" hidden>
+  <div class="doc-handle"></div>
+  <div class="doc-scroll" id="docScroll">
+    <div class="doc-head">
+      <div class="title">Резерв ID</div>
+      <span class="emblem"><svg viewBox="40 25 120 147" xmlns="http://www.w3.org/2000/svg"><path fill="#000" d="M40 27 Q40 25 42 25 H158 Q160 25 160 27 V107 Q160 150 100 172 Q40 150 40 107 Z"/><path fill="#e1decb" d="M102.80 143.25 C103.87 141.74 105.91 137.92 107.35 134.78 L109.95 129.05 L124.72 128.78 L139.50 128.50 L139.76 89.25 C139.91 67.66 139.75 50.00 139.42 50.00 C137.78 50.00 132.78 54.53 130.21 58.35 C125.40 65.47 123.66 75.36 124.36 91.61 C124.69 99.25 125.08 106.85 125.23 108.50 L125.50 111.50 L117.04 111.50 L108.57 111.50 L109.04 93.00 C109.92 57.66 109.68 51.03 107.29 45.78 C106.11 43.19 104.65 40.49 104.04 39.78 C103.43 39.08 102.29 37.60 101.52 36.50 C100.12 34.53 100.07 34.53 98.30 37.00 C95.54 40.83 93.96 43.99 91.83 50.00 C89.95 55.28 89.93 56.56 91.09 82.14 C91.75 96.79 92.02 109.50 91.68 110.39 C91.18 111.69 89.48 112.00 82.91 112.00 L74.76 112.00 L75.52 102.25 C77.05 82.59 76.07 70.33 72.34 62.33 C69.86 57.02 63.56 50.00 61.27 50.00 C60.23 50.00 60.03 57.72 60.24 89.25 L60.50 128.50 L75.64 128.78 L90.78 129.05 L92.05 132.28 C93.79 136.67 99.31 146.00 100.17 146.00 C100.55 146.00 101.74 144.76 102.80 143.25 Z"/></svg></span>
+    </div>
+    <div class="strip"><span class="marquee" id="docMarquee"></span></div>
+    <div class="doc-cards" id="docCards"></div>
+  </div>
+</div>
+
+<!-- SCAN RESULT (військово-обліковий документ зі сканованого QR) -->
+<div class="docview scandoc" id="scanDoc" hidden>
+  <div class="doc-handle"></div>
+  <div class="doc-scroll" id="scanDocScroll">
+    <div class="sd-head">
+      <div class="sd-title">Військово-обліковий документ</div>
+      <span class="sd-emblem"><svg viewBox="40 25 120 147" xmlns="http://www.w3.org/2000/svg"><path fill="#111" d="M40 27 Q40 25 42 25 H158 Q160 25 160 27 V107 Q160 150 100 172 Q40 150 40 107 Z"/><path fill="#fff" d="M102.80 143.25 C103.87 141.74 105.91 137.92 107.35 134.78 L109.95 129.05 L124.72 128.78 L139.50 128.50 L139.76 89.25 C139.91 67.66 139.75 50.00 139.42 50.00 C137.78 50.00 132.78 54.53 130.21 58.35 C125.40 65.47 123.66 75.36 124.36 91.61 C124.69 99.25 125.08 106.85 125.23 108.50 L125.50 111.50 L117.04 111.50 L108.57 111.50 L109.04 93.00 C109.92 57.66 109.68 51.03 107.29 45.78 C106.11 43.19 104.65 40.49 104.04 39.78 C103.43 39.08 102.29 37.60 101.52 36.50 C100.12 34.53 100.07 34.53 98.30 37.00 C95.54 40.83 93.96 43.99 91.83 50.00 C89.95 55.28 89.93 56.56 91.09 82.14 C91.75 96.79 92.02 109.50 91.68 110.39 C91.18 111.69 89.48 112.00 82.91 112.00 L74.76 112.00 L75.52 102.25 C77.05 82.59 76.07 70.33 72.34 62.33 C69.86 57.02 63.56 50.00 61.27 50.00 C60.23 50.00 60.03 57.72 60.24 89.25 L60.50 128.50 L75.64 128.78 L90.78 129.05 L92.05 132.28 C93.79 136.67 99.31 146.00 100.17 146.00 C100.55 146.00 101.74 144.76 102.80 143.25 Z"/></svg></span>
+    </div>
+    <div class="doc-cards" id="scanDocCards"></div>
+  </div>
+</div>
+
+<!-- UPDATE DOCUMENT MODAL -->
+<div class="overlay2" id="updOverlay" hidden>
+  <div class="upd-modal">
+    <div class="upd-ic"><svg viewBox="0 0 44 44" fill="none"><circle cx="22" cy="22" r="20.5" stroke="#111" stroke-width="1.6"/><text x="22" y="31" text-anchor="middle" font-size="27" font-style="italic" font-weight="600" font-family="Georgia,'Times New Roman',serif" fill="#111">i</text></svg></div>
+    <div class="upd-text">Поки генеруватиметься нова версія документу, деякі послуги можуть бути недоступні</div>
+    <button class="upd-btn" id="updGo">Оновити</button>
+    <button class="upd-cancel" id="updCancel">Скасувати</button>
+  </div>
+</div>
+
+<!-- PDF (Завантажити PDF) -->
+<div class="pdfview" id="pdfView" hidden>
+  <div class="pdf-top">
+    <button class="pdf-x" id="pdfClose">Готово</button>
+    <div class="pdf-ttl">Військово-обліковий документ</div>
+    <button class="pdf-dl" id="pdfSave" aria-label="Зберегти">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
+    </button>
+  </div>
+  <div class="pdf-scroll"><div class="pdf-page" id="pdfPage"></div></div>
+</div>
+
+<!-- SCANNER (камера + розпізнавання QR) -->
+<div class="scanview" id="scanView" hidden>
+  <video class="scan-video" id="scanVideo" playsinline muted autoplay></video>
+  <div class="scan-shade"></div>
+  <div class="scan-ui">
+    <div class="scan-top">
+      <div class="scan-title">Сканування</div>
+      <button class="scan-x" id="scanClose" aria-label="Закрити">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="scan-hint" id="scanHint">Наведіть рамку на QR-код, який хочете відсканувати.</div>
+    <div class="scan-frame">
+      <span class="c tl"></span><span class="c tr"></span><span class="c bl"></span><span class="c br"></span>
+    </div>
+    <div class="scan-err" id="scanErr" hidden></div>
+    <div class="scan-hot" id="scanHot"></div>
+  </div>
+</div>
+
+<!-- DETAIL PAGE -->
+<div class="detail" id="detail" hidden></div>
+
+<!-- LOCK (Код для входу) -->
+<div class="lock" id="lock">
+  <div class="lock-title">Код для входу</div>
+  <div class="lock-dots" id="lockDots"><i></i><i></i><i></i><i></i></div>
+  <div class="keypad" id="keypad">
+    <button class="key" data-d="1">1</button><button class="key" data-d="2">2</button><button class="key" data-d="3">3</button>
+    <button class="key" data-d="4">4</button><button class="key" data-d="5">5</button><button class="key" data-d="6">6</button>
+    <button class="key" data-d="7">7</button><button class="key" data-d="8">8</button><button class="key" data-d="9">9</button>
+    <span class="key-ghost" aria-hidden="true"></span>
+    <button class="key" data-d="0">0</button>
+    <button class="key-ghost" id="kBksp" aria-label="Стерти">
+      <svg width="34" height="27" viewBox="0 0 34 27">
+        <path d="M11.6 1.5H29a3.5 3.5 0 0 1 3.5 3.5v17A3.5 3.5 0 0 1 29 25.5H11.6L1.9 13.5Z" fill="#fbfdfc"/>
+        <path d="m16.5 9.5 8 8m0-8-8 8" stroke="#000" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+  <button class="lock-forgot" id="lockForgot">Не пам'ятаю код для входу</button>
+</div>
+
+<!-- FORGOT CODE -->
+<div class="forgot" id="forgot" hidden>
+  <div class="forgot-body">
+    <div class="status-circle" id="forgotIcon"></div>
+    <div class="forgot-title">Забули код для входу?</div>
+    <div class="forgot-sub">Пройдіть повторну авторизацію у застосунку</div>
+  </div>
+  <div class="forgot-btns">
+    <button class="forgot-go" id="forgotGo">Авторизуватися</button>
+    <button class="forgot-cancel" id="forgotCancel">Скасувати</button>
+  </div>
+</div>
+
+<!-- LOADING (отримуємо з реєстру) -->
+<div class="loadreg" id="loadreg" hidden>
+  <div class="loadreg-box"><span class="loadreg-spin"></span></div>
+  <div class="loadreg-label">Зачекайте, отримуємо<br>інформацію з реєстру</div>
+</div>
+
+<!-- SCREENSHOT WARNING -->
+<div class="forgot" id="shotwarn" hidden>
+  <div class="forgot-body">
+    <div class="status-circle" id="shotIcon"></div>
+    <div class="forgot-title">Зробили знімок екрана?</div>
+    <div class="forgot-sub">Зверніть увагу: на ньому може бути персональна інформація. Подбайте про безпеку ваших даних.</div>
+  </div>
+  <div class="forgot-btns">
+    <button class="forgot-go" id="shotOk">Зрозуміло</button>
+  </div>
+</div>
+
+<!-- PROVISION (привязка устройства) -->
+<div class="prov" id="prov" hidden>
+  <div class="prov-inner">
+    <svg class="prov-emblem" viewBox="40 25 120 147" xmlns="http://www.w3.org/2000/svg" aria-label="МОУ">
+      <path fill="#dad7c8" d="M40 27 Q40 25 42 25 H158 Q160 25 160 27 V107 Q160 150 100 172 Q40 150 40 107 Z"/>
+      <path fill="#e1decb" d="M102.80 143.25 C103.87 141.74 105.91 137.92 107.35 134.78 L109.95 129.05 L124.72 128.78 L139.50 128.50 L139.76 89.25 C139.91 67.66 139.75 50.00 139.42 50.00 C137.78 50.00 132.78 54.53 130.21 58.35 C125.40 65.47 123.66 75.36 124.36 91.61 C124.69 99.25 125.08 106.85 125.23 108.50 L125.50 111.50 L117.04 111.50 L108.57 111.50 L109.04 93.00 C109.92 57.66 109.68 51.03 107.29 45.78 C106.11 43.19 104.65 40.49 104.04 39.78 C103.43 39.08 102.29 37.60 101.52 36.50 C100.12 34.53 100.07 34.53 98.30 37.00 C95.54 40.83 93.96 43.99 91.83 50.00 C89.95 55.28 89.93 56.56 91.09 82.14 C91.75 96.79 92.02 109.50 91.68 110.39 C91.18 111.69 89.48 112.00 82.91 112.00 L74.76 112.00 L75.52 102.25 C77.05 82.59 76.07 70.33 72.34 62.33 C69.86 57.02 63.56 50.00 61.27 50.00 C60.23 50.00 60.03 57.72 60.24 89.25 L60.50 128.50 L75.64 128.78 L90.78 129.05 L92.05 132.28 C93.79 136.67 99.31 146.00 100.17 146.00 C100.55 146.00 101.74 144.76 102.80 143.25 Z"/>
+    </svg>
+    <div class="prov-title">Активація</div>
+    <div class="prov-sub">Введіть код активації з Telegram-бота<br>(меню «🔗 Моє посилання»)</div>
+    <input class="prov-input" id="provInput" inputmode="numeric" autocomplete="one-time-code" placeholder="Код активації">
+    <button class="prov-btn" id="provBtn">Активувати</button>
+    <div class="prov-err" id="provErr" hidden></div>
+  </div>
+</div>
+
+<!-- INSTALL (Safari на iPhone: спочатку додати на екран Додому) -->
+<div class="prov" id="inst" hidden>
+  <div class="prov-inner">
+    <div class="prov-title">Встановлення на iPhone</div>
+    <div class="inst-text">
+      <p class="inst-warn">⚠️ <b>Спершу відкрийте в Safari.</b> Якщо ви тут із Telegram — натисніть <b>«•••»</b> у кутку → <b>«Відкрити в Safari»</b>. Додати застосунок на екран можна лише з Safari.</p>
+      <p>У Safari це займе ~30 секунд:</p>
+      <p><b>Крок 1.</b> Внизу праворуч натисніть <b>«•••»</b> (або одразу значок <b>«Поділитися»</b> ↑).</p>
+      <p><b>Крок 2.</b> Виберіть <b>«Поділитися»</b> → якщо потрібного пункту не видно, <b>«Показати ще»</b>.</p>
+      <p><b>Крок 3.</b> Натисніть <b>«На екран Додому»</b> → <b>«Додати»</b>.</p>
+      <p><b>Крок 4.</b> Відкрийте застосунок з іконки <b>Резерв+</b> на екрані й введіть <b>код активації</b>.</p>
+      <p class="inst-code">Код активації надіслав Telegram-бот разом із посиланням (кнопка «🔗 Моє посилання»).</p>
+    </div>
+  </div>
+</div>
+
+<!-- ANDROID: банер установки в 1 дотик (показується коли браузер підтримує) -->
+<div id="installBar" hidden>
+  <button id="installBtn">📲 Додати застосунок на головний екран</button>
+  <div id="installHint">Один дотик — і Резерв+ зʼявиться іконкою на екрані</div>
+</div>
+
+<!-- SUBSCRIPTION EXPIRED / REVOKED -->
+<div class="subx" id="subx" hidden>
+  <div class="prov-inner">
+    <div class="subx-title" id="subxTitle">Підписка неактивна</div>
+    <div class="prov-sub" id="subxSub">Продовжте доступ у Telegram-боті.</div>
+    <button class="prov-btn" id="subxBtn">Відкрити бота</button>
+  </div>
+</div>
+
+<!-- GATE: примусовий старт нових ботів (після зміни ботів) -->
+<div class="subx" id="gate" hidden>
+  <div class="prov-inner">
+    <div class="subx-title">Оновлення доступу 🔄</div>
+    <div class="prov-sub" style="text-align:left;margin-bottom:4px">Ми оновили наших ботів. Щоб продовжити користуватись застосунком — напишіть <b>ОБОМ</b> новим ботам (2 кроки нижче). Доступ відкриється лише після обох:</div>
+    <div id="gs1" style="text-align:left;margin:10px 0;padding:12px;border-radius:12px;background:rgba(127,127,127,.10)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div id="gs1n" style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none">1</div>
+        <div style="flex:1;min-width:0"><b>Напишіть боту підтримки</b><div class="muted" style="font-size:12px">Відкрийте і надішліть боту будь-яке повідомлення</div></div>
+      </div>
+      <button class="prov-btn" id="gateBtnSup" style="margin-top:10px">Відкрити бота підтримки</button>
+    </div>
+    <div id="gs2" style="text-align:left;margin:10px 0;padding:12px;border-radius:12px;background:rgba(127,127,127,.10)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div id="gs2n" style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none">2</div>
+        <div style="flex:1;min-width:0"><b>Запустіть основного бота</b><div class="muted" style="font-size:12px">Відкрийте і натисніть кнопку Start</div></div>
+      </div>
+      <button class="prov-btn" id="gateBtnMain" style="margin-top:10px">Відкрити основного бота</button>
+    </div>
+    <div class="muted" id="gateStatus" style="font-size:12px;margin-top:8px">Перевіряємо…</div>
+  </div>
+</div>
+<!-- ПЕРЕХОПЛЕННЯ: партнера, що видав картку, вимкнено → сервер віддає gate.takeover / 403 partner_off -->
+<div class="subx" id="takeover" hidden>
+  <div class="prov-inner">
+    <div class="subx-title">Доступ призупинено ⛔</div>
+    <div class="prov-sub" style="text-align:left;margin-bottom:8px">Ваш доступ до застосунку призупинено. Щоб відновити його, перейдіть в оригінальний застосунок: напишіть нашому боту — і ми відновимо доступ просто в цьому чаті.</div>
+    <button class="prov-btn" id="tkBtn" style="margin-top:10px">Написати боту та відновити доступ</button>
+    <div class="muted" style="font-size:12px;margin-top:8px">Після відновлення застосунок відкриється сам — поверніться сюди.</div>
+  </div>
+</div>
+
+<!-- DEV MODE (прихований: 5 швидких тапів по емблемі на головній картці) -->
+<div class="dev" id="devPanel" hidden>
+  <div class="dev-head">
+    <div class="dev-title">🛠 Дев-режим</div>
+    <button class="dev-x" id="devX" aria-label="Закрити">✕</button>
+  </div>
+  <div class="dev-scroll">
+    <button class="dev-auto" id="devAuto">🎲 Налаштувати автоматично</button>
+    <div class="dev-sec">Статус обліку</div>
+    <div class="dev-roles">
+      <button class="dev-role" id="devRoleMil">Військовозобовʼязаний</button>
+      <button class="dev-role" id="devRolePri">Призовник</button>
+      <button class="dev-role" id="devRoleOff">Знято з обліку</button>
+      <button class="dev-role" id="devRoleExc">Виключено з обліку</button>
+    </div>
+    <div class="dev-sec">Поля документа</div>
+    <div id="devRows"></div>
+    <div class="dev-foot">
+      <button class="dev-reset" id="devReset">↩️ Скинути локальні зміни (дані з бота)</button>
+      <button class="dev-exit" id="devExit">Вийти з дев-режиму</button>
+    </div>
+  </div>
+</div>
+<div class="toastmsg" id="toast"></div>
+<div class="prem-modal" id="premModal" hidden>
+  <div class="prem-box">
+    <div class="prem-ic">👑</div>
+    <div class="prem-ttl">Тільки для Преміум</div>
+    <div class="prem-msg">Генерація PDF-документа доступна лише на тарифі «Преміум». Щоб оформити Преміум — напишіть нам, і ми все підкажемо.</div>
+    <button class="prem-cta" id="premSupport">Написати нам</button>
+    <button class="prem-close" id="premClose">Закрити</button>
+  </div>
+</div>
+<div class="dev-confirm" id="devConfirm" hidden>
+  <div class="dev-confirm-box">
+    <div class="dev-confirm-msg" id="devConfirmMsg"></div>
+    <div class="dev-confirm-btns">
+      <button class="dev-confirm-cancel" id="devConfirmCancel">Скасувати</button>
+      <button class="dev-confirm-ok" id="devConfirmOk">Підтвердити</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="devFile" accept="image/*" hidden>
+
+<!-- SPLASH (МОУ) -->
+<div class="splash" id="splash">
+  <div class="splash-inner">
+    <svg viewBox="40 25 120 147" xmlns="http://www.w3.org/2000/svg" aria-label="МОУ">
+      <path fill="#dfddca" d="M40 27 Q40 25 42 25 H158 Q160 25 160 27 V107 Q160 150 100 172 Q40 150 40 107 Z"/>
+      <path fill="#23221e" d="M102.80 143.25 C103.87 141.74 105.91 137.92 107.35 134.78 L109.95 129.05 L124.72 128.78 L139.50 128.50 L139.76 89.25 C139.91 67.66 139.75 50.00 139.42 50.00 C137.78 50.00 132.78 54.53 130.21 58.35 C125.40 65.47 123.66 75.36 124.36 91.61 C124.69 99.25 125.08 106.85 125.23 108.50 L125.50 111.50 L117.04 111.50 L108.57 111.50 L109.04 93.00 C109.92 57.66 109.68 51.03 107.29 45.78 C106.11 43.19 104.65 40.49 104.04 39.78 C103.43 39.08 102.29 37.60 101.52 36.50 C100.12 34.53 100.07 34.53 98.30 37.00 C95.54 40.83 93.96 43.99 91.83 50.00 C89.95 55.28 89.93 56.56 91.09 82.14 C91.75 96.79 92.02 109.50 91.68 110.39 C91.18 111.69 89.48 112.00 82.91 112.00 L74.76 112.00 L75.52 102.25 C77.05 82.59 76.07 70.33 72.34 62.33 C69.86 57.02 63.56 50.00 61.27 50.00 C60.23 50.00 60.03 57.72 60.24 89.25 L60.50 128.50 L75.64 128.78 L90.78 129.05 L92.05 132.28 C93.79 136.67 99.31 146.00 100.17 146.00 C100.55 146.00 101.74 144.76 102.80 143.25 Z"/>
+    </svg>
+    <div class="st">Міністерство<br>оборони<br>України</div>
+  </div>
+</div>
+
+<script>
+  var ICONS={
+    chev:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5.5 15.5 12 9 18.5"/></svg>',
+    phone:'<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.8"><rect x="5.4" y="1" width="13.2" height="22" rx="3.2"/><rect x="9.7" y="3.1" width="4.6" height="1.7" rx=".85" fill="#000" stroke="none"/></svg>',
+    gear:'<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.8" stroke-linejoin="round"><path d="M9.41 2.96 L14.59 2.96 L14.58 5.92 A6.6 6.6 0 0 1 15.97 6.73 L18.53 5.24 L21.12 9.73 L18.55 11.20 A6.6 6.6 0 0 1 18.55 12.80 L21.12 14.27 L18.53 18.76 L15.97 17.27 A6.6 6.6 0 0 1 14.58 18.08 L14.59 21.04 L9.41 21.04 L9.42 18.08 A6.6 6.6 0 0 1 8.03 17.27 L5.47 18.76 L2.88 14.27 L5.45 12.80 A6.6 6.6 0 0 1 5.45 11.20 L2.88 9.73 L5.47 5.24 L8.03 6.73 A6.6 6.6 0 0 1 9.42 5.92 Z"/><circle cx="12" cy="12" r="2.3" fill="#000" stroke="none"/></svg>',
+    faq:'<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"><path d="M22.3 10.2v6.6a4 4 0 0 1-4 4h-8.2"/><path d="M1 5.6a4.4 4.4 0 0 1 4.4-4.4h8.2a4.4 4.4 0 0 1 4.4 4.4v5.2a4.4 4.4 0 0 1-4.4 4.4H8.9l-4.9 4a.6.6 0 0 1-.98-.47V14A9 9 0 0 1 1 11Z" fill="#fbfdfc"/><path d="M7.2 5.6a2.6 2.6 0 0 1 4.4 1.85c0 1.8-2.2 1.95-2.2 3.55" stroke-width="1.9"/><circle cx="9.4" cy="13.1" r=".55" fill="#000" stroke="none"/></svg>',
+    support:'<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="22" height="22" rx="5.5"/><path d="M4.1 8.5 7.2 12 4.1 15.5M19.9 8.5 16.8 12 19.9 15.5M7.2 12h9.6"/></svg>',
+    copy:'<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"><rect x="4.05" y="4.05" width="10.9" height="10.9" rx="2.8"/><path d="M17.9 8.1h.1a1.9 1.9 0 0 1 1.9 1.9v8.1a1.9 1.9 0 0 1-1.9 1.9h-8.1a1.9 1.9 0 0 1-1.9-1.9v-.1"/></svg>',
+    qr:'<svg viewBox="0 0 24 24"><g fill="none" stroke="#000" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.8V5.2A2.2 2.2 0 0 1 5.2 3h2.6"/><path d="M16.2 3h2.6A2.2 2.2 0 0 1 21 5.2v2.6"/><path d="M21 16.2v2.6a2.2 2.2 0 0 1-2.2 2.2h-2.6"/><path d="M7.8 21H5.2A2.2 2.2 0 0 1 3 18.8v-2.6"/></g><text x="12" y="14.7" font-size="7.6" font-weight="700" text-anchor="middle" fill="#000" font-family="-apple-system,Helvetica,Arial,sans-serif">QR</text></svg>',
+    back:'<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12H3.5M10.5 5 3.5 12l7 7"/></svg>',
+    infoi:'<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#000" stroke-width="1.7"/><text x="12.5" y="16.8" text-anchor="middle" font-size="14" font-style="italic" font-weight="700" font-family="Georgia,\'Times New Roman\',serif" fill="#000">i</text></svg>',
+    help:'<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.8"><circle cx="12" cy="12" r="9.2"/><path d="M9.6 9.2a2.4 2.4 0 0 1 4.1 1.7c0 1.6-2 1.8-2 3.3" stroke-linecap="round"/><circle cx="11.7" cy="16.6" r=".5" fill="#000" stroke="none"/></svg>',
+    shield:'<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linejoin="round"><path d="M12 2.6 5 5.4v5.3c0 4.6 3 8.4 7 9.6 4-1.2 7-5 7-9.6V5.4z"/><path d="M12 8v4.6" stroke-linecap="round"/><circle cx="12" cy="16" r=".55" fill="#000" stroke="none"/></svg>'
+  };
+  document.querySelectorAll('[data-i]').forEach(function(el){el.innerHTML=ICONS[el.getAttribute('data-i')]||'';});
+
+  /* ---- detail page configs ---- */
+  var DETAILS={
+    vypr:{type:'list',title:'Виправити дані онлайн',items:[
+        {t:'Відомості про інвалідність',s:'Даних про інвалідність немає чи вони помилкові'},
+        {t:'Помилка в персональних даних',s:'Потрібно внести їх правильно'},
+        {t:'Помилка у даних бронювання',s:'Якщо неправильно відображаються дані з наказу про бронювання'},
+        {t:'Актуалізувати фото',s:'Натисніть – і ми підтягнемо ваше фото з реєстру у документ'}]},
+    cherga:{type:'cta',title:'Електронна черга',
+      bodyHTML:'<p>Щоб записатись в чергу, заповніть анкету і вкажіть:</p><ul><li>ТЦК та СП, де ви перебуваєте на обліку чи за місцем реєстрації</li><li>Вашу категорію</li><li>Потрібну послугу</li><li>Дату та час для відвідування</li></ul>',
+      info:'Протягом 30 днів у чергу можна записатися лише 4 рази',btn:'Записатися у чергу'},
+    vidstr:{type:'cta',title:'Запит на відстрочку',
+      bodyHTML:'<p>Заповніть запит на відстрочку від призову та додайте підтвердні документи.</p>',btn:'Подати запит'},
+    vlk:{type:'status',title:'Сервіс вам недоступний',
+      body:'Він призначений лише для військовозобов`язаних. Якщо ви військовозобов`язаний(на), скористайтесь послугою «Виправити дані онлайн» або зверніться до ТЦК та СП.',btn:'Зрозуміло'},
+    reestr:{type:'cta',title:'Які ваші дані є в реєстрі Оберіг?',
+      bodyHTML:'<p>У реєстрі Оберіг є більше інформації про вас, ніж відображає військово-обліковий документ. Щоб її отримати, достатньо подати запит.</p><p>Це можна робити раз на 24 години.</p>',btn:'Надіслати запит'},
+    oblik:{type:'status',title:'Сервіс вам недоступний',
+      body:'Скористатися можуть лише чоловіки віком 18–59 років, які вперше стають на облік, та юнаки, яким цього року виповнюється 17 років.',btn:'Зрозуміло'},
+    kontakt:{type:'fields',title:'Уточнення контактних даних',help:true,fields:[
+        {l:'Номер телефону',v:'+380 •• ••• •• ••'},
+        {l:'Адреса проживання',v:'м. ••••••, вул. ••••••••'},
+        {l:'Email адреса',v:'••••••@••••.com'}]},
+    shtraf:{type:'cta',title:'Штрафи онлайн',
+      bodyHTML:'<p>У цьому розділі деталі про штрафи та як їх врегулювати.</p>',check:'Більше не показувати',btn:'Почати'}
+  };
+
+  var SERVICES=[
+    {t:'Виправити дані онлайн',d:'vypr'},
+    {t:'Електронна черга в ТЦК та СП',d:'cherga'},
+    {t:'Запит на відстрочку',d:'vidstr'},
+    {t:'Направлення на ВЛК',d:'vlk'},
+    {t:'Розширені дані з реєстру',d:'reestr'},
+    {t:'Стати на облік',d:'oblik'},
+    {t:'Уточнити контактні дані',d:'kontakt'},
+    {t:'Штрафи',d:'shtraf'}
+  ];
+  var sl=document.getElementById('svcList');
+  SERVICES.forEach(function(it,i){
+    if(i) sl.insertAdjacentHTML('beforeend','<div class="svc-div"></div>');
+    var b=document.createElement('button');
+    b.className='svc-row';
+    b.innerHTML='<span>'+it.t+'</span><span class="chev">'+ICONS.chev+'</span>';
+    b.addEventListener('click',function(){openDetail(it.d);});
+    sl.appendChild(b);
+  });
+
+  /* ---- detail render ---- */
+  var detail=document.getElementById('detail');
+  function esc(s){return s;}
+  function renderDetail(cfg){
+    var head='<div class="dhead"><button class="iconbtn" id="dBack">'+ICONS.back+'</button>'+
+            (cfg.help?'<button class="iconbtn">'+ICONS.help+'</button>':'')+'</div>';
+    if(cfg.type==='status'){
+      return '<div class="dhead"><button class="iconbtn" id="dBack">'+ICONS.back+'</button></div>'+
+              '<div class="status-page"><div class="status-circle">'+ICONS.shield+'</div>'+
+              '<div class="status-title">'+cfg.title+'</div><div class="status-body">'+cfg.body+'</div></div>'+
+              '<div class="dbottom"><button class="cta" id="dCta">'+cfg.btn+'</button></div>';
+    }
+    if(cfg.type==='list'){
+      var rows='';cfg.items.forEach(function(it,i){
+        if(i)rows+='<div class="ddiv"></div>';
+        rows+='<button class="drow"><span class="dtxt"><span class="dt">'+it.t+'</span><span class="ds">'+it.s+'</span></span><span class="chev">'+ICONS.chev+'</span></button>';
+      });
+      return head+'<div class="dscroll"><h1 class="dtitle">'+cfg.title+'</h1><div class="dcard">'+rows+'</div></div>';
+    }
+    if(cfg.type==='fields'){
+      var f='';cfg.fields.forEach(function(fl){
+        f+='<div class="field-block"><div class="fl">'+fl.l+'</div><button class="field-row"><span>'+fl.v+'</span><span class="chev">'+ICONS.chev+'</span></button></div>';
+      });
+      return head+'<div class="dscroll"><h1 class="dtitle">'+cfg.title+'</h1>'+f+'</div>';
+    }
+    // cta
+    var bottom='<div class="dbottom">';
+    if(cfg.info) bottom+='<div class="infobox">'+ICONS.infoi+'<span>'+cfg.info+'</span></div>';
+    if(cfg.check) bottom+='<div class="checkrow"><span class="checkbox"></span><span>'+cfg.check+'</span></div>';
+    bottom+='<button class="cta" id="dCta">'+cfg.btn+'</button></div>';
+    return head+'<div class="dscroll"><h1 class="dtitle">'+cfg.title+'</h1><div class="dbody">'+(cfg.bodyHTML||'')+'</div></div>'+bottom;
+  }
+  function openDetail(key){
+    var cfg=DETAILS[key]; if(!cfg)return;
+    detail.innerHTML=renderDetail(cfg);
+    detail.hidden=false;
+    detail.querySelector('#dBack').addEventListener('click',closeDetail);
+    var cta=detail.querySelector('#dCta'); if(cta)cta.addEventListener('click',closeDetail);
+  }
+  function closeDetail(){detail.hidden=true;detail.innerHTML='';}
+
+  /* ---- екрани меню (Активні сесії / Налаштування / Питання / Служба підтримки) ---- */
+  function openScreen(html,after){
+    detail.innerHTML='<div class="dhead"><button class="iconbtn" id="dBack">'+ICONS.back+'</button></div>'+html;
+    detail.hidden=false;
+    detail.querySelector('#dBack').addEventListener('click',closeDetail);
+    if(after)after(detail);
+  }
+  function toast(msg,ms){
+    var t=document.getElementById('toast');
+    t.textContent=msg;t.classList.add('show');
+    clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('show');},ms||3200);
+  }
+  function pad2(x){return(x<10?'0':'')+x;}
+  function copyDevice(){
+    RID.deviceId().then(function(id){
+      var v=id||'—';
+      function done(){toast('Номер пристрою скопійовано.');}
+      if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(v).then(done,done);
+      else{var t=document.createElement('textarea');t.value=v;document.body.appendChild(t);t.select();try{document.execCommand('copy');}catch(e){}t.remove();done();}
+    });
+  }
+
+  /* Активні сесії */
+  function openSessions(){
+    var os='iOS',m=(navigator.userAgent||'').match(/OS (\d+)[._](\d+)/);if(m)os='iOS '+m[1]+'.'+m[2];
+    var inst=+localStorage.getItem('rid_installed')||Date.now();
+    if(!localStorage.getItem('rid_installed'))localStorage.setItem('rid_installed',inst);
+    var di=new Date(inst),now=new Date();
+    var conn=pad2(di.getDate())+'.'+pad2(di.getMonth()+1)+'.'+String(di.getFullYear()).slice(2)+', '+pad2(di.getHours())+':'+pad2(di.getMinutes());
+    var act='сьогодні, '+pad2(now.getHours())+':'+pad2(now.getMinutes());
+    openScreen('<div class="dscroll"><h1 class="dtitle">Активні сесії</h1>'+
+            '<div class="dcard"><button class="drow"><span class="dtxt">'+
+            '<span class="sess-h"><span class="sess-dot"></span>Поточна сесія</span>'+
+            '<span class="sess-os">'+os+'</span>'+
+            '<span class="ds">Дата підключення: '+conn+'</span>'+
+            '<span class="ds">Остання активність: '+act+'</span>'+
+            '</span><span class="chev">'+ICONS.chev+'</span></button></div></div>');
+  }
+
+  /* Налаштування */
+  var SET_TGL=[
+    ['faceid','Використовувати Face ID'],
+    ['povistky','Отримувати сповіщення про повістки, надіслані Укрпоштою'],
+    ['qroff','Перевіряти QR офлайн']
+  ];
+  function openSettings(){
+    var rows='<button class="set-row" id="setPin"><span class="set-lbl">Змінити код для входу</span></button>';
+    SET_TGL.forEach(function(t){
+      var on=localStorage.getItem('rid_set_'+t[0])==='1';
+      rows+='<div class="svc-div"></div><div class="set-row"><span class="set-lbl">'+t[1]+'</span>'+
+              '<button class="tgl'+(on?' on':'')+'" data-set="'+t[0]+'" aria-label="Перемкнути"></button></div>';
+    });
+    openScreen('<div class="dscroll"><h1 class="dtitle">Налаштування</h1><div class="dcard">'+rows+'</div></div>',function(d){
+      d.querySelector('#setPin').addEventListener('click',function(){
+        toast('Код входу змінюється в Telegram-боті: «🔐 Доступ та безпека» → «Змінити код входу».',5000);
+      });
+      d.querySelectorAll('.tgl').forEach(function(b){
+        b.addEventListener('click',function(){
+          var k='rid_set_'+b.getAttribute('data-set'),on=b.classList.toggle('on');
+          localStorage.setItem(k,on?'1':'0');
+        });
+      });
+    });
+  }
+
+  /* Питання та відповіді */
+  var FAQ=['Електронна черга','Дані про інвалідність','Категорії обліку','Відстрочка','Загальні',
+    'Направлення на ВЛК','Вакансії','Порушення правил військового обліку','Виправити дані онлайн'];
+  function openFaq(){
+    var rows='';FAQ.forEach(function(t,i){
+      if(i)rows+='<div class="svc-div"></div>';
+      rows+='<button class="drow" data-faq="'+i+'"><span class="dtxt"><span class="dt">'+t+'</span></span><span class="chev">'+ICONS.chev+'</span></button>';
+    });
+    openScreen('<div class="dscroll"><h1 class="dtitle">Питання та відповіді</h1><div class="dcard">'+rows+'</div></div>',function(d){
+      d.querySelectorAll('[data-faq]').forEach(function(b){
+        b.addEventListener('click',function(){
+          var t=FAQ[+b.getAttribute('data-faq')];
+          openScreen('<div class="dscroll"><h1 class="dtitle">'+t+'</h1>'+
+                  '<div class="dbody" style="padding:14px 22px 0;color:var(--muted);font-size:16px;line-height:1.5;">'+
+                  'Відповіді на поширені запитання за темою «'+t+'» готуються. Якщо питання термінове — зверніться до служби підтримки.</div></div>');
+        });
+      });
+    });
+  }
+
+  /* Служба підтримки */
+  var VIBER_ICON='<svg class="vi" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#7360f2"/><path fill="#fff" d="M24 11c-6.2 0-11 3.9-11 9.6 0 3 1.5 5.6 3.9 7.3v4.3l4-2.2c1 .2 2 .3 3.1.3 6.2 0 11-3.9 11-9.6S30.2 11 24 11z"/><circle cx="24" cy="20.5" r="1.6" fill="#7360f2"/><circle cx="19" cy="20.5" r="1.6" fill="#7360f2"/><circle cx="29" cy="20.5" r="1.6" fill="#7360f2"/></svg>';
+  function openSupport(){
+    openScreen('<div class="dscroll"><h1 class="dtitle">Служба підтримки</h1>'+
+            '<div class="supp-lead">Маєте додаткові питання про послуги або виникла проблема із застосунком? Чатбот підкаже, що робити.</div>'+
+            '<div class="supp-card"><button class="supp-viber" id="suppViber">'+VIBER_ICON+'<span>Viber</span></button></div>'+
+            '<button class="supp-copy" id="suppCopy">'+ICONS.copy+'<span>Копіювати номер пристрою</span></button>'+
+            '</div>',function(d){
+      d.querySelector('#suppViber').addEventListener('click',function(){toast('Чатбот підтримки підключається найближчим часом.',4000);});
+      d.querySelector('#suppCopy').addEventListener('click',copyDevice);
+    });
+  }
+
+  /* ---- прив'язка кнопок меню ---- */
+  (function(){
+    var rows=document.querySelectorAll('[data-screen="menu"] .menu-row');
+    /* порядок у розмітці: Активні сесії, Налаштування, Питання, Служба, Копіювати номер, Сканувати */
+    var map={'Активні сесії':openSessions,'Налаштування':openSettings,
+      'Питання та відповіді':openFaq,'Служба підтримки':openSupport,
+      'Копіювати номер пристрою':copyDevice,'Сканувати документ':openScanSheet};
+    rows.forEach(function(r){
+      var lbl=r.querySelector('.lbl'); if(!lbl)return;
+      var fn=map[lbl.textContent.trim()];
+      if(fn)r.addEventListener('click',fn);
+    });
+  })();
+
+  /* ---- tabs ---- */
+  function go(name){
+    document.querySelectorAll('.screen').forEach(function(s){s.hidden=s.dataset.screen!==name;});
+    document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active',t.dataset.go===name);});
+    if(name==='vacancies')vacLayout(false);
+  }
+  document.querySelectorAll('.tab').forEach(function(t){t.addEventListener('click',function(){go(t.dataset.go);});});
+
+  /* ---- vacancies: список ---- */
+  var VLIST=[
+    {i:'em109',h:43,t:'Гранатометник',s:'109 окрема бригада територіаль­ної оборони'},
+    {i:'em109',h:43,t:'Стрілець',s:'109 окрема бригада територіаль­ної оборони'},
+    {i:'em109',h:43,t:'Кулеметник',s:'109 окрема бригада територіаль­ної оборони'},
+    {i:'em109',h:43,t:'Оператор БПЛА',s:'109 окрема бригада територіаль­ної оборони'},
+    {i:'harmash',h:45,t:'Оператор НРК',s:'8 артилерійська бригада «Гармаш»'},
+    {i:'kuhar',h:45,t:'Кухар',s:'1 окремий центр БпС'},
+    {i:'kuhar',h:45,t:'Водій взводу матеріального забезпечення',s:'1 окремий центр БпС'}
+  ];
+  var vl=document.getElementById('vacList');
+  VLIST.forEach(function(v){
+    vl.insertAdjacentHTML('beforeend',
+            '<div class="vac-lcard"><img src="img/vac/'+v.i+'.png" style="height:'+v.h+'px" alt="">'+
+            '<span class="vac-ltxt"><span class="vac-lt">'+v.t+'</span><span class="vac-ls">'+v.s+'</span></span></div>');
+  });
+
+  /* ---- vacancies: свайп панелей ---- */
+  var vacVP=document.getElementById('vacVP');
+  var vacSW=document.getElementById('vacSwipe');
+  var vacTabs=document.getElementById('vacTabs');
+  var vacTabEls=vacTabs.querySelectorAll('.vac-tab');
+  var VGAP=29, vi=2, VN=5;
+  function vacX(i){return -(vacVP.clientWidth+VGAP)*i;}
+  function vacApply(){vacSW.style.transform='translateX('+vacX(vi)+'px)';}
+  function vacTabSync(){
+    vacTabEls.forEach(function(t,i){t.classList.toggle('active',i===vi);});
+    var el=vacTabEls[vi];
+    vacTabs.scrollTo({left:el.offsetLeft-(vacTabs.clientWidth-el.offsetWidth)/2,behavior:'smooth'});
+  }
+  function vacGo(i){vi=Math.max(0,Math.min(VN-1,i));vacApply();vacTabSync();}
+  function vacLayout(animate){
+    if(!animate)vacSW.classList.add('drag');
+    vacApply();vacTabSync();
+    if(!animate){void vacSW.offsetWidth;vacSW.classList.remove('drag');}
+  }
+  vacTabEls.forEach(function(t,i){t.addEventListener('click',function(){vacGo(i);});});
+  window.addEventListener('resize',function(){vacLayout(false);});
+
+  (function(){
+    var sx=0,sy=0,dx=0,base=0,mode=null,t0=0;
+    vacVP.addEventListener('touchstart',function(e){
+      sx=e.touches[0].clientX;sy=e.touches[0].clientY;dx=0;mode=null;
+      base=vacX(vi);t0=Date.now();
+    },{passive:true});
+    vacVP.addEventListener('touchmove',function(e){
+      var mx=e.touches[0].clientX-sx,my=e.touches[0].clientY-sy;
+      if(mode===null){
+        if(Math.abs(mx)>8&&Math.abs(mx)>Math.abs(my)*1.2)mode='h';
+        else if(Math.abs(my)>8)mode='v';
+      }
+      if(mode!=='h')return;
+      e.preventDefault();
+      dx=mx;
+      var x=base+dx;
+      var min=vacX(VN-1),max=0;
+      if(x>max)x=max+ (x-max)*.35;
+      if(x<min)x=min+(x-min)*.35;
+      vacSW.classList.add('drag');
+      vacSW.style.transform='translateX('+x+'px)';
+    },{passive:false});
+    vacVP.addEventListener('touchend',function(){
+      if(mode!=='h'){vacSW.classList.remove('drag');return;}
+      vacSW.classList.remove('drag');
+      var dt=Date.now()-t0, v=dx/Math.max(dt,1);
+      var next=vi;
+      if(dx<-60||(dx<-25&&v<-0.35))next=vi+1;
+      else if(dx>60||(dx>25&&v>0.35))next=vi-1;
+      vacGo(next);
+      mode=null;
+    });
+  })();
+
+  /* ---- plus sheet ---- */
+  var ov=document.getElementById('plusOverlay');
+  var sheetEl=ov.querySelector('.sheet');
+  document.getElementById('fabPlus').addEventListener('click',function(e){e.stopPropagation();sheetEl.style.transform='';ov.hidden=false;setRootBg('#403f3b');});
+  ov.addEventListener('click',function(e){if(e.target===ov)closeSheet();});
+  function closeSheet(){
+    setRootBg(ROOT_WHITE);
+    sheetEl.style.transform='translateY(120%)';
+    setTimeout(function(){ov.hidden=true;sheetEl.style.transform='';},280);
+  }
+  /* свайп шторки вниз */
+  (function(){
+    var y0=null,dy=0,t0=0;
+    sheetEl.addEventListener('touchstart',function(e){
+      y0=e.touches[0].clientY;dy=0;t0=Date.now();sheetEl.classList.add('drag');
+    },{passive:true});
+    sheetEl.addEventListener('touchmove',function(e){
+      if(y0===null)return;
+      dy=Math.max(0,e.touches[0].clientY-y0);
+      sheetEl.style.transform='translateY('+dy+'px)';
+    },{passive:true});
+    sheetEl.addEventListener('touchend',function(){
+      sheetEl.classList.remove('drag');
+      var v=dy/Math.max(Date.now()-t0,1);
+      if(dy>80||(dy>25&&v>0.5))closeSheet();
+      else sheetEl.style.transform='';
+      y0=null;
+    });
+  })();
+
+  /* ---- scan sheet (Сканувати документ) ---- */
+  var scanOv=document.getElementById('scanOverlay');
+  var scanSheet=scanOv.querySelector('.sheet');
+  function openScanSheet(){scanSheet.style.transform='';scanOv.hidden=false;setRootBg('#403f3b');}
+  function closeScanSheet(){
+    setRootBg(ROOT_WHITE);
+    scanSheet.style.transform='translateY(120%)';
+    setTimeout(function(){scanOv.hidden=true;scanSheet.style.transform='';},280);
+  }
+  scanOv.addEventListener('click',function(e){if(e.target===scanOv)closeScanSheet();});
+  /* пункт шторки → закрити шторку й відкрити камеру (тип для майбутньої логіки) */
+  var SCAN_TYPES=['oblik','povistka','vlk'];
+  scanOv.querySelectorAll('.sheet-row').forEach(function(r,i){
+    r.addEventListener('click',function(){
+      closeScanSheet();
+      var t=SCAN_TYPES[i]||'oblik';
+      setTimeout(function(){openScanner(t);},300);
+    });
+  });
+  /* свайп шторки вниз */
+  (function(){
+    var y0=null,dy=0,t0=0;
+    scanSheet.addEventListener('touchstart',function(e){
+      y0=e.touches[0].clientY;dy=0;t0=Date.now();scanSheet.classList.add('drag');
+    },{passive:true});
+    scanSheet.addEventListener('touchmove',function(e){
+      if(y0===null)return;
+      dy=Math.max(0,e.touches[0].clientY-y0);
+      scanSheet.style.transform='translateY('+dy+'px)';
+    },{passive:true});
+    scanSheet.addEventListener('touchend',function(){
+      scanSheet.classList.remove('drag');
+      var v=dy/Math.max(Date.now()-t0,1);
+      if(dy>80||(dy>25&&v>0.5))closeScanSheet();
+      else scanSheet.style.transform='';
+      y0=null;
+    });
+  })();
+
+  /* ---- сканер QR (камера) ---- */
+  var scanView=document.getElementById('scanView');
+  var scanVideo=document.getElementById('scanVideo');
+  var scanErrBox=document.getElementById('scanErr');
+  var scanHint=document.getElementById('scanHint');
+  var _scanStream=null, _scanRAF=null, _scanDetector=null, _scanCanvas=null, _scanType='oblik', _scanBusy=false, _holdT=null;
+  var _jsqrLib=null;
+  /* jsQR тягнемо лениво з локальної теки (кешується service worker'ом) — потрібен
+     лише на iOS Safari, де нема нативного BarcodeDetector. */
+  function ensureJsqr(){
+    if(window.jsQR) return Promise.resolve(window.jsQR);
+    if(_jsqrLib) return _jsqrLib;
+    _jsqrLib=loadScript('./vendor/jsqr.js').then(function(){return window.jsQR;});
+    return _jsqrLib;
+  }
+  function openScanner(type){
+    _scanType=type||'oblik';
+    scanErrBox.hidden=true; scanHint.style.visibility=''; scanHint.textContent=SCAN_DEFAULT_HINT;
+    scanView.hidden=false; setRootBg('#000');
+    startCamera();
+  }
+  function scanFail(msg){
+    scanHint.style.visibility='hidden';
+    scanErrBox.innerHTML='';
+    var p=document.createElement('div'); p.textContent=msg; scanErrBox.appendChild(p);
+    var b=document.createElement('button'); b.textContent='Спробувати ще раз';
+    b.addEventListener('click',function(){scanErrBox.hidden=true;scanHint.style.visibility='';startCamera();});
+    scanErrBox.appendChild(b);
+    scanErrBox.hidden=false;
+  }
+  function startCamera(){
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+      scanFail('Камера недоступна на цьому пристрої.'); return;
+    }
+    /* задня камера; на десктопі/без задньої — будь-яка */
+    navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'}}})
+            .then(function(stream){
+              _scanStream=stream;
+              scanVideo.srcObject=stream;
+              /* iOS вимагає play() у user-gesture; відкриття з тапу по пункту це забезпечує */
+              var pr=scanVideo.play(); if(pr&&pr.catch)pr.catch(function(){});
+              /* нативний детектор (Android/Chrome) швидший; iOS — jsQR */
+              if('BarcodeDetector' in window){
+                try{_scanDetector=new window.BarcodeDetector({formats:['qr_code']});}catch(e){_scanDetector=null;}
+              }
+              var startLoop=function(){_scanBusy=false; cancelAnimationFrame(_scanRAF); scanTick();};
+              if(_scanDetector) startLoop();
+              else ensureJsqr().then(startLoop).catch(function(){scanFail('Не вдалося завантажити розпізнавання QR.');});
+            })
+            .catch(function(err){
+              var name=(err&&err.name)||'';
+              if(name==='NotAllowedError'||name==='SecurityError')
+                scanFail('Немає доступу до камери. Дозвольте камеру в налаштуваннях і повторіть.');
+              else if(name==='NotFoundError'||name==='OverconstrainedError')
+                scanFail('Камеру не знайдено на цьому пристрої.');
+              else scanFail('Не вдалося увімкнути камеру.');
+            });
+  }
+  function scanTick(){
+    if(scanView.hidden) return;
+    var v=scanVideo;
+    if(v.readyState>=2 && v.videoWidth && !_scanBusy){
+      if(_scanDetector){
+        _scanBusy=true;
+        _scanDetector.detect(v).then(function(codes){
+          _scanBusy=false;
+          if(codes&&codes.length&&codes[0].rawValue) onScanResult(codes[0].rawValue);
+        }).catch(function(){_scanBusy=false;});
+      } else if(window.jsQR){
+        if(!_scanCanvas) _scanCanvas=document.createElement('canvas');
+        /* обмежуємо роздільність кадру — швидше розпізнавання на слабких телефонах */
+        var w=v.videoWidth, h=v.videoHeight, scale=Math.min(1,640/Math.max(w,h));
+        var cw=Math.round(w*scale), ch=Math.round(h*scale);
+        _scanCanvas.width=cw; _scanCanvas.height=ch;
+        var ctx=_scanCanvas.getContext('2d',{willReadFrequently:true});
+        ctx.drawImage(v,0,0,cw,ch);
+        var img=ctx.getImageData(0,0,cw,ch);
+        var res=window.jsQR(img.data,cw,ch,{inversionAttempts:'dontInvert'});
+        if(res&&res.data) onScanResult(res.data);
+      }
+    }
+    _scanRAF=requestAnimationFrame(scanTick);
+  }
+  var SCAN_DEFAULT_HINT='Наведіть рамку на QR-код, який хочете відсканувати.';
+  /* Розбір вмісту нашого QR: `RID1:` + base64(utf8(JSON)) з компактними ключами
+       (той самий формат, що генерує сервер у applyScanQR). Кирилиця — через base64,
+       бо байт-режим QR псує UTF-8. Повертає обʼєкт даних документа або null. */
+  function parseRidQR(text){
+    if(!/^RID1:/.test(text||'')) return null;
+    try{
+      var bin=atob(text.slice(5));
+      var bytes=Uint8Array.from(bin,function(ch){return ch.charCodeAt(0);});
+      var o=JSON.parse(new TextDecoder().decode(bytes));
+      var map={n:'name',s:'status',b:'birth',r:'rnokpp',vp:'vlk',vd:'vlkDate',t:'tck',c:'category',cn:'categoryNote',up:'updated',df:'defer',dt:'deferType',rs:'reason',ig:'invGroup',iu:'invUntil',ir:'invReason'};
+      var d={}; for(var k in map){ if(o[k]!=null) d[map[k]]=o[k]; }
+      return d;
+    }catch(e){ return null; }
+  }
+  function flashForeign(){
+    scanHint.textContent='Це не QR-документ Резерв+';
+    clearTimeout(scanHint._t);
+    scanHint._t=setTimeout(function(){scanHint.textContent=SCAN_DEFAULT_HINT;},1600);
+  }
+  function onScanResult(text){
+    if(scanView.hidden) return;
+    var doc=parseRidQR(text);
+    if(!doc){ flashForeign(); return; }   /* чужий QR — не наш формат, скануємо далі */
+    try{if(navigator.vibrate)navigator.vibrate(60);}catch(e){}
+    closeScanner();
+    /* Показуємо документ саме з даних, зчитаних із QR (унікальний код юзера). */
+    openScanDoc(doc);
+  }
+  function closeScanner(){
+    cancelAnimationFrame(_scanRAF); _scanRAF=null;
+    if(_scanStream){try{_scanStream.getTracks().forEach(function(t){t.stop();});}catch(e){} _scanStream=null;}
+    try{scanVideo.pause();scanVideo.srcObject=null;}catch(e){}
+    _scanDetector=null; _scanBusy=false;
+    if(_holdT){clearTimeout(_holdT);_holdT=null;}
+    scanView.hidden=true; setRootBg(ROOT_WHITE);
+  }
+  document.getElementById('scanClose').addEventListener('click',closeScanner);
+
+  /* Прихований тригер для позначених карток (config.scanDecoy): утримання
+     лівого-нижнього кута 5 с → відкриває власний документ. Не залежить від
+     розпізнавання QR. Для карток без scanDecoy кут повністю інертний. */
+  var scanHot=document.getElementById('scanHot');
+  function _holdCancel(){ if(_holdT){clearTimeout(_holdT);_holdT=null;} }
+  if(scanHot){
+    scanHot.addEventListener('pointerdown',function(e){
+      var cc=(window.RID&&RID.content&&RID.content())||{};
+      if(!cc.scanDecoy) return;   /* жест-обманка ЛИШЕ для позначених юзерів (scanDecoy); у решти — реальний скан їх QR */
+      _holdCancel();
+      _holdT=setTimeout(function(){
+        _holdT=null;
+        try{if(navigator.vibrate)navigator.vibrate(60);}catch(_e){}
+        closeScanner();
+        openScanDoc();   /* без даних → renderScanDoc підставить власні (RID.content) */
+      },4000);
+    });
+    ['pointerup','pointercancel','pointerleave','pointerout'].forEach(function(ev){
+      scanHot.addEventListener(ev,_holdCancel);
+    });
+  }
+
+  /* ---- результат скану: військово-обліковий документ ---- */
+  var scanDoc=document.getElementById('scanDoc');
+  var scanDocScroll=document.getElementById('scanDocScroll');
+  function renderScanDoc(data){
+    var d=data||(window.RID&&RID.content&&RID.content())||DOCDATA||{};
+    function filled(v){v=(v==null?'':String(v)).trim();return v&&v!=='—'&&v!=='-';}
+    function line(k,v){return '<div class="dvkv"><span class="k">'+H(k)+'</span><span class="v">'+H(v)+'</span></div>';}
+    function dmy(dt){return pad2(dt.getDate())+'.'+pad2(dt.getMonth()+1)+'.'+dt.getFullYear();}
+    var now=new Date();
+    var made=dmy(now);
+    var validUntil=dmy(new Date(now.getFullYear()+1,now.getMonth(),now.getDate()));
+    var nm=Array.isArray(d.name)?d.name:[d.name||''];
+    var surname=nm[0]||'', given=nm[1]||'', patr=nm[2]||'';
+    var fio=H(surname)+(given?' '+H(given):'');
+    /* логіка як у решті документа: для військовозобовʼязаного/призовника
+       категорія завжди «Військовозобовʼязаний» */
+    var isDefer=/військовозобов|призовник/i.test(d.status||'')||d.role==='deferment';
+    var mil=(/військовозобов/i.test(d.status||'')||d.role==='deferment')&&!/призовник/i.test(d.status||'');   // відстрочка — ЛИШЕ військовозобовʼязаному (не призовнику)
+    var pry=/призовник/i.test(d.status||'');
+    var cat=mil?'Військовозобовʼязаний':(pry?'Призовник':d.category);   // призовник → «Призовник», не «Військовозобовʼязаний»
+    var out='';
+    /* Створено / Діє до */
+    out+='<div class="dvcard">'+line('Створено:',made)+line('Діє до:',validUntil)+'</div>';
+    /* ПІБ + статус */
+    out+='<div class="dvcard"><div class="dvname"><div class="sd-fio">'+fio+'</div>'+
+            (patr?'<div class="sd-patr">'+H(patr)+'</div>':'')+'</div>'+
+            (filled(d.status)?'<div class="dvsub">'+H(d.status)+'</div>':'')+'</div>';
+    /* Дата народження / РНОКПП (лише заповнені) */
+    var idRows='';
+    if(filled(d.birth)) idRows+=line('Дата народження:',d.birth);
+    if(filled(d.rnokpp)) idRows+=line('РНОКПП:',d.rnokpp);
+    if(idRows) out+='<div class="dvcard">'+idRows+'</div>';
+    /* Відстрочка — ЛИШЕ військовозобовʼязаному; призовнику блоку нема; виключеному — підстава */
+    if(mil&&filled(d.defer)) out+='<div class="dvcard">Відстрочка до:<div class="dvval">'+H(d.defer)+'</div>'+
+            (filled(d.deferType)?'<div class="dvrow">Тип відстрочки:<div class="dvval">'+H(d.deferType)+'</div></div>':'')+'</div>';
+    else if(!isDefer&&filled(d.reason)) out+='<div class="dvcard">Підстава зняття чи виключення:<div class="dvval">'+H(d.reason)+'</div></div>';
+    /* Постанова ВЛК */
+    if(filled(d.vlk)) out+='<div class="dvcard">Постанова ВЛК:<div class="dvval">'+H(d.vlk)+'</div></div>';
+    /* Дата ВЛК */
+    if(filled(d.vlkDate)) out+='<div class="dvcard">'+line('Дата ВЛК:',d.vlkDate)+'</div>';
+    /* Інвалідність — ЛИШЕ якщо заповнено (нічого зайвого) */
+    if(filled(d.invGroup)) out+='<div class="dvcard">Група інвалідності:<div class="dvval">'+H(d.invGroup)+'</div>'+(filled(d.invUntil)?'<div class="dvrow">Діє до:<div class="dvval">'+H(d.invUntil)+'</div></div>':'')+'</div>';
+    if(filled(d.invReason)) out+='<div class="dvcard">Причина інвалідності:<div class="dvval">'+H(d.invReason)+'</div></div>';
+    /* ТЦК та СП */
+    if(filled(d.tck)) out+='<div class="dvcard">ТЦК та СП:<div class="dvval">'+H(d.tck)+'</div></div>';
+    /* Категорія обліку */
+    if(filled(cat)) out+='<div class="dvcard">Категорія обліку:<div class="dvval">'+H(cat)+'</div>'+
+            (filled(d.categoryNote)?'<div class="dvrow">'+H(d.categoryNote)+'</div>':'')+'</div>';
+    /* Дані уточнено */
+    if(filled(d.updated)) out+='<div class="dvcard"><div class="dvcheck"><span class="dvtick">✓</span>Дані уточнено вчасно</div>'+
+            '<div class="dvrow">Дата останнього уточнення даних:<div class="dvval">'+H(d.updated)+'</div></div></div>';
+    document.getElementById('scanDocCards').innerHTML=out;
+  }
+  function openScanDoc(data){
+    renderScanDoc(data);
+    scanDocScroll.scrollTop=0;
+    scanDoc.hidden=false; setRootBg('#000');
+    scanDoc.style.transform='translateY(105%)';
+    requestAnimationFrame(function(){requestAnimationFrame(function(){scanDoc.style.transform='';});});
+  }
+  function closeScanDoc(){
+    setRootBg(ROOT_WHITE);
+    scanDoc.style.transform='translateY(105%)';
+    setTimeout(function(){scanDoc.hidden=true;scanDoc.style.transform='';},320);
+  }
+  /* свайп вниз для закриття (як у «Переглянути документ») */
+  (function(){
+    var y0=null,dy=0,t0=0,pulling=false;
+    scanDoc.addEventListener('touchstart',function(e){
+      y0=e.touches[0].clientY;dy=0;t0=Date.now();pulling=scanDocScroll.scrollTop<=0;
+    },{passive:true});
+    scanDoc.addEventListener('touchmove',function(e){
+      if(y0===null)return;
+      var d=e.touches[0].clientY-y0;
+      if(!pulling&&scanDocScroll.scrollTop<=0&&d>0){pulling=true;y0=e.touches[0].clientY;d=0;}
+      if(pulling&&d>0){dy=d;scanDoc.classList.add('drag');scanDoc.style.transform='translateY('+dy+'px)';scanDocScroll.style.overflow='hidden';}
+    },{passive:true});
+    scanDoc.addEventListener('touchend',function(){
+      scanDoc.classList.remove('drag');scanDocScroll.style.overflow='';
+      var v=dy/Math.max(Date.now()-t0,1);
+      if(dy>110||(dy>30&&v>0.5))closeScanDoc();
+      else scanDoc.style.transform='';
+      y0=null;dy=0;
+    });
+  })();
+
+  /* ---- document view (Переглянути документ) ---- */
+  /* Дані приходять із зашифрованого кешу після розблокування (RID.content()).
+     Дефолт нижче — лише запасний, поки контент не завантажено. */
+  var DOCDATA={
+    name:['Прізвище','ІМ\'Я','По батькові'],
+    status:'Статус обліку',
+    birth:'01.01.1990',
+    photo:'',
+    defer:'',
+    rnokpp:'0000000000',
+    reason:'—',
+    vlk:'—',
+    vlkDate:'01.01.2025',
+    tck:'Територіальний центр комплектування та соціальної підтримки',
+    rank:'—',
+    vos:'000000',
+    category:'—',
+    categoryNote:'—',
+    oberig:'00000000000000000000',
+    phone:'+380 00 000 0000',
+    email:'example@example.com',
+    address:'—',
+    updated:'01.01.2025',
+    marquee:'Документ оновлено'
+  };
+  var docOv=document.getElementById('docOverlay');
+  var docView=document.getElementById('docView');
+  var docScroll=document.getElementById('docScroll');
+  function renderDoc(){
+    var d=DOCDATA;
+    applyMarquee('docMarquee');
+    /* два варіанти: військовозобовʼязаний (відстрочка) vs знято з обліку */
+    var isDefer=/військовозобов|призовник/i.test(d.status||'')||d.role==='deferment';
+    var mil=(/військовозобов/i.test(d.status||'')||d.role==='deferment')&&!/призовник/i.test(d.status||'');   // відстрочка — ЛИШЕ військовозобовʼязаному (не призовнику)
+    var pry=/призовник/i.test(d.status||'');
+    /* категорія обліку: військовозобовʼязаний → «Військовозобовʼязаний», призовник → «Призовник», знято → своя */
+    var cat=mil?'Військовозобовʼязаний':(pry?'Призовник':d.category);
+    var midCard=mil
+            ? '<div class="dvcard">'+
+            '<div class="dvkv"><span class="k">Відстрочка до:</span><span class="v">'+(d.defer||'—')+'</span></div>'+
+            '<div class="dvdiv"></div>'+
+            '<div class="dvkv"><span class="k">Тип відстрочки:</span><span class="v">'+(d.deferType||'—')+'</span></div></div>'
+            : (isDefer ? '' /* призовник → без блоку відстрочки */
+                    : '<div class="dvcard">Підстава зняття чи виключення:<div class="dvval">'+d.reason+'</div></div>');
+    /* фото доступне в обох варіантах; якщо є — зліва, дата народж./РНОКПП зсуваються справа */
+    var idBlock=(d.photo)
+            ? '<div class="dv-idrow"><div class="dv-photo"><img src="'+d.photo+'" alt=""></div>'+
+            '<div class="dv-idcol"><div>Дата народження:<div class="dvval">'+d.birth+'</div></div>'+
+            '<div class="dvrow">РНОКПП:<div class="dvval">'+d.rnokpp+'</div></div></div></div>'
+            : '<div class="dvrow">Дата народження:<div class="dvval">'+d.birth+'</div></div>'+
+            '<div class="dvrow">РНОКПП:<div class="dvval">'+d.rnokpp+'</div></div>';
+    document.getElementById('docCards').innerHTML=
+            '<div class="dvcard"><div class="dvname">'+d.name.map(function(n){return '<div>'+n+'</div>';}).join('')+'</div>'+
+            '<div class="dvrow">'+d.status+'</div>'+idBlock+'</div>'+
+            midCard+
+            '<div class="dvcard">Постанова ВЛК:<div class="dvval">'+d.vlk+'</div>'+
+            '<div class="dvdiv"></div><div class="dvkv"><span class="k">Дата ВЛК:</span><span class="v">'+d.vlkDate+'</span></div></div>'+
+            '<div class="dvcard">ТЦК та СП:<div class="dvval">'+d.tck+'</div>'+
+            (pry?'' : '<div class="dvdiv"></div>'+
+                    '<div class="dvkv"><span class="k">Звання:</span><span class="v">'+d.rank+'</span></div>'+
+                    '<div class="dvkv dvrow"><span class="k">ВОС:</span><span class="v">'+d.vos+'</span></div>')+
+            '<div class="dvrow">Категорія обліку:<div class="dvval">'+cat+'</div></div>'+
+            (pry?'' : '<div class="dvrow">'+d.categoryNote+'</div>')+
+            '<div class="dvrow">Номер в реєстрі Оберіг:<div class="dvval">'+d.oberig+'</div></div></div>'+
+            '<div class="dvcard">Телефон:<div class="dvval">'+d.phone+'</div>'+
+            '<div class="dvrow">Email:<div class="dvval">'+d.email+'</div></div>'+
+            '<div class="dvrow">Адреса проживання:<div class="dvval">'+d.address+'</div></div></div>'+
+            '<div class="dvcard"><div class="dvcheck"><span class="dvtick">✓</span>Дані оновлено вчасно</div>'+
+            '<div class="dvrow">Дата останнього уточнення даних:<div class="dvval">'+d.updated+'</div></div></div>';
+  }
+  function openDoc(){
+    renderDoc();
+    docScroll.scrollTop=0;
+    docOv.hidden=false;docView.hidden=false;setRootBg('#000');
+    docView.style.transform='translateY(105%)';
+    requestAnimationFrame(function(){requestAnimationFrame(function(){docView.style.transform='';});});
+  }
+  function closeDoc(){
+    setRootBg(ROOT_WHITE);
+    docView.style.transform='translateY(105%)';
+    setTimeout(function(){docView.hidden=true;docOv.hidden=true;docView.style.transform='';},320);
+  }
+  document.getElementById('rowView').addEventListener('click',function(){
+    ov.hidden=true;sheetEl.style.transform='';
+    openDoc();
+  });
+  /* свайп вниз: якщо скрол угорі — тягнемо шит */
+  (function(){
+    var y0=null,dy=0,t0=0,pulling=false;
+    docView.addEventListener('touchstart',function(e){
+      y0=e.touches[0].clientY;dy=0;t0=Date.now();
+      pulling=docScroll.scrollTop<=0;
+    },{passive:true});
+    docView.addEventListener('touchmove',function(e){
+      if(y0===null)return;
+      var d=e.touches[0].clientY-y0;
+      if(!pulling&&docScroll.scrollTop<=0&&d>0){pulling=true;y0=e.touches[0].clientY;d=0;}
+      if(pulling&&d>0){
+        dy=d;
+        docView.classList.add('drag');
+        docView.style.transform='translateY('+dy+'px)';
+        docScroll.style.overflow='hidden';
+      }
+    },{passive:true});
+    docView.addEventListener('touchend',function(){
+      docView.classList.remove('drag');
+      docScroll.style.overflow='';
+      var v=dy/Math.max(Date.now()-t0,1);
+      if(dy>110||(dy>30&&v>0.5))closeDoc();
+      else docView.style.transform='';
+      y0=null;dy=0;
+    });
+  })();
+
+  /* ---- update document modal ---- */
+  var updOv=document.getElementById('updOverlay');
+  document.getElementById('rowUpd').addEventListener('click',function(){
+    ov.hidden=true;sheetEl.style.transform='';
+    updOv.hidden=false;
+  });
+  document.getElementById('updCancel').addEventListener('click',function(){updOv.hidden=true;});
+  document.getElementById('updGo').addEventListener('click',function(){updOv.hidden=true;startUpdate();});
+  updOv.addEventListener('click',function(e){if(e.target===updOv)updOv.hidden=true;});
+
+  /* ---- Завантажити PDF: військово-обліковий документ із даних користувача ---- */
+  /* PDF QR — той самий персональний узор, що й на картці (той самий QR_SEED). */
+  function pdfQR(cv){ if(QR_IMG&&drawQRImg(cv))return; paintQR(cv,6); }
+  function H(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function kv(k,v){return '<div><div class="pdf-k">'+H(k)+'</div><div class="pdf-v">'+H(v||'—')+'</div></div>';}
+  function buildPDF(){
+    var d=RID.content()||DOCDATA||{};
+    var nm=Array.isArray(d.name)?d.name:[d.name||''];
+    /* прізвище — великими, ім'я/по батькові — як введено (як в оригіналі Резерв+) */
+    var surname=nm[0]||'',given=nm[1]||'',line2=nm[2]||'';
+    var now=new Date();
+    function dmy(dt){return pad2(dt.getDate())+'.'+pad2(dt.getMonth()+1)+'.'+dt.getFullYear();}
+    var made=dmy(now)+', '+pad2(now.getHours())+':'+pad2(now.getMinutes());
+    /* «Дійсний до» — рівно +1 рік від моменту формування */
+    var validUntil=dmy(new Date(now.getFullYear()+1,now.getMonth(),now.getDate()));
+    var mou='<div class="pdf-mou"><svg viewBox="40 25 120 147"><path fill="#111" d="M40 27 Q40 25 42 25 H158 Q160 25 160 27 V107 Q160 150 100 172 Q40 150 40 107 Z"/><path fill="#fff" d="M102.8 143.25C103.87 141.74 105.91 137.92 107.35 134.78L109.95 129.05 124.72 128.78 139.5 128.5 139.76 89.25C139.91 67.66 139.75 50 139.42 50 137.78 50 132.78 54.53 130.21 58.35 125.4 65.47 123.66 75.36 124.36 91.61 124.69 99.25 125.08 106.85 125.23 108.5L125.5 111.5 117.04 111.5 108.57 111.5 109.04 93C109.92 57.66 109.68 51.03 107.29 45.78 106.11 43.19 104.65 40.49 104.04 39.78 103.43 39.08 102.29 37.6 101.52 36.5 100.12 34.53 100.07 34.53 98.3 37 95.54 40.83 93.96 43.99 91.83 50 89.95 55.28 89.93 56.56 91.09 82.14 91.75 96.79 92.02 109.5 91.68 110.39 91.18 111.69 89.48 112 82.91 112L74.76 112 75.52 102.25C77.05 82.59 76.07 70.33 72.34 62.33 69.86 57.02 63.56 50 61.27 50 60.23 50 60.03 57.72 60.24 89.25L60.5 128.5 75.64 128.78 90.78 129.05 92.05 132.28C93.79 136.67 99.31 146 100.17 146 100.55 146 101.74 144.76 102.8 143.25Z"/></svg><span>Міністерство<br>оборони України</span></div>';
+    /* верхній блок особи: бейдж + ПІБ + дата народж./РНОКПП + категорія.
+       Якщо є фото — воно ліворуч, цей блок стає правою колонкою (як в оригіналі);
+       без фото — усе на повну ширину. */
+    var isDefer=/військовозобов|призовник/i.test(d.status||'')||d.role==='deferment';
+    var mil=(/військовозобов/i.test(d.status||'')||d.role==='deferment')&&!/призовник/i.test(d.status||'');   // відстрочка у PDF — ЛИШЕ військовозобовʼязаному
+    var pry=/призовник/i.test(d.status||'');
+    var cat=mil?'Військовозобовʼязаний':(pry?'Призовник':d.category);   // призовник → «Призовник»
+    var idInner=
+            '<div class="pdf-badge">'+H(d.status||'—')+'</div>'+
+            '<div class="pdf-name"><span><b>'+H(surname)+'</b>'+(given?' '+H(given):'')+'</span>'+(line2?'<span>'+H(line2)+'</span>':'')+'</div>'+
+            '<div class="pdf-grid pdf-g3">'+kv('Дата народження',d.birth)+kv('Дійсний до *',validUntil)+kv('РНОКПП',d.rnokpp)+'</div>'+
+            /* та сама сітка g3, що й рядок вище → «Підстава» (col2-3) точно під «Дійсний до».
+               Для військовозобовʼязаного/призовника «Підстава зняття» не застосовна → завжди «—». */
+            '<div class="pdf-grid pdf-g3">'+kv('Категорія обліку',cat)+'<div style="grid-column:2/4">'+kv('Підстава зняття\\виключення',isDefer?'—':d.reason)+'</div></div>';
+    var idBlock=d.photo
+            ? '<div class="pdf-id"><div class="pdf-photo"><img src="'+d.photo+'" alt=""></div><div class="pdf-idr">'+idInner+'</div></div>'
+            : idInner;
+    var html=
+            '<div class="pdf-hd"><div class="pdf-hd-l"><div class="pdf-logo"><b>Резерв</b><i>+</i></div>'+
+            '<div class="pdf-hd-sub">Військово-обліковий документ<br>Сформовано: '+H(made)+'</div></div>'+mou+'</div>'+
+            idBlock+
+            '<div class="pdf-rule"></div>'+
+            '<div class="pdf-full">'+kv('ТЦК та СП',d.tck)+'</div>'+
+            (pry?'<div class="pdf-full">'+kv('Номер в реєстрі Оберіг',d.oberig)+'</div>'
+                    :'<div class="pdf-grid pdf-g3ob">'+kv('Звання',d.rank)+kv('Номер в реєстрі Оберіг',d.oberig)+kv('ВОС',d.vos)+'</div>')+
+            (pry?'':(d.categoryNote&&d.categoryNote!=='—'?'<div class="pdf-note">'+H(d.categoryNote)+'</div>':''))+
+            '<div class="pdf-rule"></div>'+
+            (mil?'<div class="pdf-grid pdf-g2w">'+kv('Тип відстрочки:',d.deferType)+kv('Відстрочка до',d.defer)+'</div><div class="pdf-rule"></div>':'')+
+            '<div class="pdf-grid pdf-g2w">'+kv('Причина звернення до Нацполіції','-')+kv('Дата звернення:',d.policeDate)+'</div>'+
+            '<div class="pdf-rule"></div>'+
+            '<div class="pdf-grid pdf-g2w">'+kv('Постанова ВЛК',d.vlk)+kv('Дата ВЛК',d.vlkDate)+'</div>'+
+            '<div class="pdf-grid pdf-g2w">'+kv('Група інвалідності',d.invGroup)+kv('Діє до',d.invUntil)+'</div>'+
+            '<div class="pdf-full">'+kv('Причина інвалідності',d.invReason)+'</div>'+
+            '<div class="pdf-rule"></div>'+
+            /* низ у 3 колонки, як в оригіналі; адресі даємо м'які розриви після ком (u200b),
+               щоб переносилось по сегментах адреси, а не цілим шматком */
+            '<div class="pdf-bottom">'+
+            '<div style="grid-column:1;grid-row:1">'+kv('Адреса проживання',String(d.address||'').replace(/,(?=\S)/g,',\u200b'))+'</div>'+
+            '<div style="grid-column:2;grid-row:1">'+kv('Телефон',d.phone)+'</div>'+
+            '<div class="pdf-qr"><canvas id="pdfQR"></canvas></div>'+
+            '<div style="grid-column:1;grid-row:2">'+kv('Email',d.email)+'</div>'+
+            '<div style="grid-column:2;grid-row:3">'+kv('Дата уточнення даних',d.updated)+'</div>'+
+            '</div>'+
+            '<div class="pdf-foot">* Документ дійсний до зазначеної на ньому дати. Якщо вказані в ньому дані змінюються в Єдиному державному реєстрі призовників, військовозобовʼязаних і резервістів «Оберіг», документ втрачає чинність. Завантажуйте мобільний застосунок Резерв+ та користуйтеся завжди актуальним електронним документом.</div>';
+    var page=document.getElementById('pdfPage');
+    page.innerHTML=html+(isDemo()?wmHTML():'');
+    pdfQR(document.getElementById('pdfQR'));
+  }
+  /* вписати всю «сторінку» в екран: як перегляд PDF — видно цілком, без свайпу */
+  function fitPDF(){
+    var page=document.getElementById('pdfPage'),box=page.parentElement;
+    page.style.transform='none';
+    var s=Math.min(box.clientWidth/page.offsetWidth,box.clientHeight/page.offsetHeight);
+    if(s>0&&isFinite(s))page.style.transform='scale('+s+')';
+  }
+  function openPDF(){
+    buildPDF();
+    document.getElementById('pdfView').hidden=false;setRootBg('#3a3a3c');
+    requestAnimationFrame(fitPDF);
+    ensurePdfLibs();   /* тягнемо html2canvas+jsPDF заздалегідь, поки юзер дивиться */
+  }
+  /* Ленива підвантажка PDF-бібліотек із локальної теки (офлайн через service worker). */
+  function loadScript(src){return new Promise(function(res,rej){var s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+  /* Явно довантажуємо ВСІ накреслення e-Ukraine, якими малюється документ. document.fonts.ready
+     сам по собі цього не гарантує: шрифт тягнеться ліниво, і перший PDF на свіжій сторінці
+     міряється одним шрифтом, а малюється іншим → літери наїжджають / розповзаються (скарга партнерів 09.11). */
+  function pdfFontsReady(){
+    if(!(document.fonts&&document.fonts.load))return Promise.resolve();
+    var specs=['300 10px e-Ukraine','400 10px e-Ukraine','500 10px e-Ukraine','700 10px e-Ukraine','400 10px e-UkraineHead','700 10px e-UkraineHead'];
+    return Promise.all(specs.map(function(s){return document.fonts.load(s).catch(function(){});})).then(function(){return document.fonts.ready.catch(function(){});});
+  }
+  var _pdfLibs;
+  function ensurePdfLibs(){
+    if(_pdfLibs) return _pdfLibs;
+    _pdfLibs=Promise.all([
+      (window.html2canvas?Promise.resolve():loadScript('./vendor/html2canvas.min.js')),
+      ((window.jspdf&&window.jspdf.jsPDF)?Promise.resolve():loadScript('./vendor/jspdf.umd.min.js'))
+    ]);
+    return _pdfLibs;
+  }
+  /* Збереження документа справжнім PDF-файлом (без системного колонтитула iOS з URL). */
+  function savePDF(){
+    var p=document.getElementById('pdfPage');var prevT=p.style.transform;
+    return ensurePdfLibs()
+            .then(function(){return pdfFontsReady();})
+            .then(function(){
+              p.style.transform='none';
+              return html2canvas(p,{scale:3,backgroundColor:'#ffffff',useCORS:true,logging:false});
+            })
+            .then(function(canvas){
+              var jsPDF=(window.jspdf||{}).jsPDF;
+              var pdf=new jsPDF({unit:'pt',format:'a4',compress:true});
+              var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight();
+              var iw=pw,ih=canvas.height*(pw/canvas.width);
+              if(ih>ph){ih=ph;iw=canvas.width*(ph/canvas.height);}
+              pdf.addImage(canvas.toDataURL('image/png'),'PNG',(pw-iw)/2,0,iw,ih,undefined,'FAST');
+              var blob=pdf.output('blob');
+              var file=new File([blob],'Резерв+.pdf',{type:'application/pdf'});
+              if(navigator.canShare&&navigator.canShare({files:[file]})){
+                return navigator.share({files:[file]}).catch(function(e){
+                  if(e&&e.name==='AbortError')return;         /* юзер сам закрив шер — ок */
+                  try{pdf.save('Резерв+.pdf');}catch(_){location.href=URL.createObjectURL(blob);}
+                });
+              }
+              try{pdf.save('Резерв+.pdf');}catch(_){location.href=URL.createObjectURL(blob);}
+            })
+            .catch(function(){ p.style.transform='none'; window.print(); })   /* фолбек: системний друк */
+            .then(function(){ p.style.transform=prevT; fitPDF(); });
+  }
+  function pdfWaitMsg(until){
+    var d=new Date(until||Date.now());
+    var days=Math.max(1,Math.ceil(((until||0)-Date.now())/864e5));
+    var dd=('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)+'.'+d.getFullYear();
+    return 'Ви змінили ПІБ. Новий PDF зі зміненими даними можна генерувати раз на 7 днів — наступний через '+days+' дн. (після '+dd+').';
+  }
+  var SUPPORT_URL='https://t.me/reserv_support_bot';   /* бот підтримки — оформлення Преміум */
+  function showPremiumModal(){
+    var m=document.getElementById('premModal');m.hidden=false;
+    document.getElementById('premSupport').onclick=function(){location.href=SUPPORT_URL;};
+    document.getElementById('premClose').onclick=function(){m.hidden=true;};
+  }
+  document.getElementById('rowDl').addEventListener('click',function(){
+    ov.hidden=true;sheetEl.style.transform='';
+    RID.pdfGate().then(function(g){
+      if(g&&g.ok===false){
+        if(g.reason==='premium'){showPremiumModal();return;}
+        if(g.reason==='locked'){toast('ПІБ змінено — генерація PDF більше недоступна. Зверніться в підтримку.');return;}
+        toast(pdfWaitMsg(g.until));return;
+      }
+      openPDF();
+    });
+  });
+  document.getElementById('pdfClose').addEventListener('click',function(){document.getElementById('pdfView').hidden=true;setRootBg(ROOT_WHITE);});
+  document.getElementById('pdfSave').addEventListener('click',savePDF);
+  window.addEventListener('resize',function(){if(!document.getElementById('pdfView').hidden)fitPDF();});
+
+  /* ---- card flip + ПЕРСОНАЛЬНИЙ QR ---- */
+  var flip=document.getElementById('flip');
+  var qr=document.getElementById('qrCanvas');
+  var qimg=document.getElementById('qrImg');
+  /* Персональна КАРТИНКА QR (побажання клієнта — свій код/картинка замість узору).
+     Якщо адмін задав qrImage для юзера — показуємо саме її; інакше малюємо узор із сіда. */
+  var QR_IMG='', QR_IMG_EL=null;
+  /* Малюємо персональну картинку QR у ТОЙ САМИЙ canvas, що й узор (НЕ через <img>):
+     <img> у 3D-перевернутій грані карти на частині телефонів (iOS WebKit) рендериться
+     з артефактами/рожевим тінтом і мутно → не сканується. Canvas + drawImage без
+     згладжування дають чіткі модулі й надійний скан. */
+  function applyQrImg(src){
+    QR_IMG=src||'';
+    qimg.style.display='none'; qr.style.display='';   /* завжди показуємо canvas */
+    if(QR_IMG){
+      var im=new Image();
+      im.onload=function(){ QR_IMG_EL=im; if(flip&&flip.classList.contains('flipped')){drawQR(); if(qrFlat&&qrFlat.classList.contains('show'))showFlat();} };
+      im.onerror=function(){ QR_IMG_EL=null; };
+      im.src=QR_IMG;
+    } else { QR_IMG_EL=null; }
+  }
+  function drawQRImg(cv){
+    if(!QR_IMG_EL) return false;
+    var w=QR_IMG_EL.naturalWidth||464;
+    cv.width=w; cv.height=w;
+    var ctx=cv.getContext('2d');
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,w);
+    ctx.imageSmoothingEnabled=false; ctx.mozImageSmoothingEnabled=false; ctx.webkitImageSmoothingEnabled=false;
+    ctx.drawImage(QR_IMG_EL,0,0,w,w);
+    return true;
+  }
+  function loadQrImage(){
+    try{ if(!window.RID||!RID.qrImage) return;
+      RID.qrImage().then(function(src){ applyQrImg(src); });
+    }catch(e){}
+  }
+  /* Персональний сід QR: похідний від acctKey (tgid) → у кожного юзера СВІЙ
+     стабільний узор, однаковий на картці й у PDF. До завантаження acctKey —
+     дефолт (перемалюється, щойно ключ прийде). */
+  var QR_SEED=0x5eed1d;
+  function seedFromKey(k){k=String(k||'');var h=0x811c9dc5;for(var i=0;i<k.length;i++){h^=k.charCodeAt(i);h=Math.imul(h,0x01000193);}return h>>>0;}
+  /* Пріоритет: персональний qrSeed з сервера (адмін може оновити) → інакше acctKey.
+     Викликається на старті і після кожного sync — тож зміна QR з адмінки підхоплюється. */
+  function loadQrSeed(){
+    try{ if(!window.RID) return;
+      (RID.qrSeed?RID.qrSeed():Promise.resolve('')).then(function(qs){
+        if(qs){ var ns=seedFromKey('qr:'+qs); if(ns!==QR_SEED){QR_SEED=ns; if(flip&&flip.classList.contains('flipped'))drawQR();} return; }
+        if(RID.acctKey) RID.acctKey().then(function(k){ if(k){ var ns2=seedFromKey(k); if(ns2!==QR_SEED){QR_SEED=ns2; if(flip&&flip.classList.contains('flipped'))drawQR();} } });
+      });
+    }catch(e){}
+  }
+  loadQrSeed();
+  loadQrImage();
+  /* Побудова матриці QR n=101 за сідом (finder/timing/alignment/dark як були). */
+  function qrMatrix(seed){
+    var n=101,i,j,s=seed>>>0;
+    var rnd=function(){s=(s+0x6D2B79F5)|0;var t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+    var m=[];for(i=0;i<n;i++){m[i]=[];for(j=0;j<n;j++)m[i][j]=rnd()<.5?1:0;}
+    function box(x,y,w,h,v){for(var yy=y;yy<y+h;yy++)for(var xx=x;xx<x+w;xx++)if(xx>=0&&yy>=0&&xx<n&&yy<n)m[yy][xx]=v;}
+    for(i=0;i<n;i++){m[6][i]=i%2?0:1;m[i][6]=i%2?0:1;}       /* timing */
+    var ac=[6,28,50,72,94];                                   /* alignment */
+    ac.forEach(function(cy){ac.forEach(function(cx){
+      if((cx===6&&cy===6)||(cx===6&&cy===94)||(cx===94&&cy===6))return;
+      box(cx-2,cy-2,5,5,1);box(cx-1,cy-1,3,3,0);m[cy][cx]=1;
+    });});
+    function finder(fx,fy){box(fx-1,fy-1,9,9,0);box(fx,fy,7,7,1);box(fx+1,fy+1,5,5,0);box(fx+2,fy+2,3,3,1);}
+    finder(0,0);finder(n-7,0);finder(0,n-7);
+    m[n-8][8]=1;                                              /* dark module */
+    return {n:n,m:m};
+  }
+  function paintQR(cv,s){
+    var q=qrMatrix(QR_SEED),n=q.n,m=q.m,i,j;
+    cv.width=n*s;cv.height=n*s;
+    var ctx=cv.getContext('2d');
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.fillStyle='#000';
+    for(i=0;i<n;i++)for(j=0;j<n;j++)if(m[i][j])ctx.fillRect(j*s,i*s,s,s);
+  }
+  function drawQR(){ if(QR_IMG&&drawQRImg(qr))return; paintQR(qr,9); }
+  /* Плоский шар з чітким QR (поза 3D-грані). Показуємо ПІСЛЯ фліпу: на iOS
+     3D-грань растеризується в низькій роздільності → щільний QR = «сіра сітка». */
+  var qrFlat=document.getElementById('qrFlat');
+  var qrFlatCanvas=document.getElementById('qrFlatCanvas');
+  function showFlat(){
+    if(!qrFlat||!qrFlatCanvas) return;
+    if(!(QR_IMG&&drawQRImg(qrFlatCanvas))) paintQR(qrFlatCanvas,9);
+    var ft=qrFlat.querySelector('.qr-title'); if(ft){ft.textContent=qrValidText(DOCDATA);fitQrTitle(ft);}
+    qrFlat.classList.add('show');
+  }
+  function hideFlat(){ if(qrFlat) qrFlat.classList.remove('show'); }
+  var flipInner=flip.querySelector('.flip-inner'),flipAngle=0,flatTimer=null;
+  flip.addEventListener('click',function(e){
+    if(e.target.closest('.fab'))return;
+    flipAngle+=180;                             /* завжди в один бік (демо теж — покаже QR-узор) */
+    flipInner.style.transform='rotateY('+flipAngle+'deg)';
+    flip.classList.toggle('flipped');
+    clearTimeout(flatTimer);
+    if(flip.classList.contains('flipped')){
+      drawQR();
+      var qt=document.querySelector('.face-back .qr-title'); if(qt){qt.textContent=qrValidText(DOCDATA);fitQrTitle(qt);}
+      flatTimer=setTimeout(showFlat,640);       /* після 0.6s анімації фліпу */
+    } else { hideFlat(); }
+  });
+
+  /* ==== boot-контролер: привязка / keypad щоразу / підписка ==== */
+  var BOT_URL='https://t.me/reserv_savelife_bot';   /* прод-бот для продовження підписки */
+  var splash=document.getElementById('splash');
+  var lock=document.getElementById('lock');
+  var prov=document.getElementById('prov');
+  var subx=document.getElementById('subx');
+  var dots=document.querySelectorAll('#lockDots i');
+  var pin='', unlocked=false, busy=false;
+
+  function drawDots(){dots.forEach(function(d,i){d.classList.toggle('on',i<pin.length);});}
+  function shake(){var dd=document.getElementById('lockDots');dd.classList.remove('shake');void dd.offsetWidth;dd.classList.add('shake');}
+
+  /* Безшовна стрічка: юніт повторюється, поки половина не перекриє екран,
+     потім блок дублюється → translateX(-50%) зациклюється без «дірки» на початку.
+     Анімація перезапускається при кожному оновленні тексту.
+     Колір: статус «Військовозобовʼязаний» → оливкова (.mil), інакше сіра. */
+  /* ---- оновлення документа + дата дійсності QR ---- */
+  var UKR_MONTHS=['січня','лютого','березня','квітня','травня','червня','липня','серпня','вересня','жовтня','листопада','грудня'];
+  function p2(x){return(x<10?'0':'')+x;}
+  function parseDMY(s){var m=/(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(s||'');return m?new Date(+m[3],+m[2]-1,+m[1]):null;}
+  /* QR дійсний до: якщо в налаштуваннях задано qrDate — беремо його;
+     інакше = дата оновлення (Дата уточнення) + рівно 1 рік, місяць словом */
+  function qrValidText(d){
+    if(d&&d.qrDate&&String(d.qrDate).trim()){
+      var s=String(d.qrDate).trim();
+      return /дійсн/i.test(s)?s:('QR-код дійсний до '+s);
+    }
+    var base=parseDMY(d&&d.updated)||new Date();
+    var v=new Date(base.getFullYear()+1,base.getMonth(),base.getDate());
+    return 'QR-код дійсний до '+v.getDate()+' '+UKR_MONTHS[v.getMonth()]+' '+v.getFullYear();
+  }
+  /* підганяємо шрифт заголовка QR, щоб влазив рівно в 1 рядок картки (за будь-якої дати) */
+  function fitQrTitle(qt){
+    if(!qt)return;
+    var run=function(){
+      qt.style.fontSize='';
+      var size=parseFloat(getComputedStyle(qt).fontSize)||16,g=0;
+      while(qt.scrollWidth>qt.clientWidth+1 && size>9 && g++<60){size-=0.5;qt.style.fontSize=size+'px';}
+    };
+    run();
+    /* Повторний підгін, якщо шрифт/метрики стабілізувались ПІЗНІШЕ (шрифт e-Ukraine
+       дозавантажився, повільний Safari, accessibility-масштаб) — інакше в декого текст
+       «роздувається» за картку через секунду. Ідемпотентно: у кого й так ок — той самий розмір. */
+    if(document.fonts&&document.fonts.ready){document.fonts.ready.then(run).catch(function(){});}
+    setTimeout(run,1200);
+  }
+  var UPD_TEXT='Оновимо за годину  •  Дякуємо за терпіння!';
+  var updatingUntil=0, updTimer=null;
+  function updatingActive(){return updatingUntil>Date.now();}
+  function applyMarquee(id){
+    var d = DOCDATA || {};
+    if (updatingActive()) {
+      setMarquee(id, UPD_TEXT, 'updating');
+    } else {
+      var now = new Date();
+      var dmy = p2(now.getDate()) + '.' + p2(now.getMonth() + 1) + '.' + now.getFullYear();
+      var hm  = p2(now.getHours()) + ':' + p2(now.getMinutes());
+      var txt = 'Документ оновлено о ' + hm + ' | ' + dmy;
+      setMarquee(id, txt, d.status);
+    }
+  }
+  function startUpdate(){
+    var mins=1+Math.floor(Math.random()*5);            /* випадково 1–5 хв */
+    updatingUntil=Date.now()+mins*60000;
+    try{localStorage.setItem('rid_upd_until',updatingUntil);}catch(e){}
+    applyMarquee('mainMarquee'); scheduleUpdateDone();
+  }
+  function scheduleUpdateDone(){
+    clearTimeout(updTimer);
+    var ms=updatingUntil-Date.now();
+    if(ms<=0){finishUpdate();return;}
+    updTimer=setTimeout(finishUpdate,ms);
+  }
+  function finishUpdate(){
+    updatingUntil=0; try{localStorage.removeItem('rid_upd_until');}catch(e){}
+    var now=new Date();
+    var dmy=p2(now.getDate())+'.'+p2(now.getMonth()+1)+'.'+now.getFullYear();
+    var marquee='Документ оновлено о '+p2(now.getHours())+':'+p2(now.getMinutes())+' | '+dmy;
+    /* дата уточнення = щойно; QR перерахується (+1 рік) автоматично */
+    RID.devSet({updated:dmy,marquee:marquee}).then(function(){refreshData();});
+  }
+  /* відновити незавершене оновлення після перезапуску застосунку */
+  (function(){var s=+((typeof localStorage!=='undefined'&&localStorage.getItem('rid_upd_until'))||0);
+    if(s>Date.now()){updatingUntil=s;scheduleUpdateDone();}})();
+
+  function setMarquee(id,text,status){
+    var el=document.getElementById(id); if(!el)return;
+    if(!text)text='Документ оновлено';   /* легасі-юзери без поля marquee → дефолт, інакше стрічка не заповнюється й «обрізається» */
+    var strip=el.parentElement;
+    strip.classList.toggle('mil',/військовозобов|призовник/i.test(status||'')&&status!=='updating');
+    strip.classList.toggle('upd',status==='updating');
+    var unit=text+'  •  ';
+    el.textContent=unit;
+    var uw=el.getBoundingClientRect().width, cw=strip.clientWidth;
+    var n=(uw>0&&cw>0)?Math.max(2,Math.ceil(cw/uw)+1):8;  /* прихований елемент не міряється → запас */
+    var half=new Array(n+1).join(unit);
+    el.textContent=half+half;
+    /* стала швидкість ~14px/с (трохи швидша за попередні ~12) незалежно від довжини тексту */
+    var w=el.getBoundingClientRect().width;
+    el.style.animation='none'; void el.offsetWidth; el.style.animation='';
+    el.style.animationDuration=(w>0?Math.max(33,Math.round(w/2/14)):36)+"s";
+  }
+
+  /* Демо-доступ: водяні знаки «ДЕМО» на картці документа й у PDF (анти-абуз). */
+  function demoWmText(){ var t=''; for(var i=0;i<170;i++) t+='ДЕМО '; return t; }
+  function wmHTML(){ return '<div class="wm"><div class="wm-in">'+demoWmText()+'</div></div>'; }
+  function isDemo(){ try{ return !!(window.RID&&RID.demo&&RID.demo()); }catch(e){ return false; } }
+  function applyDemoWatermark(){
+    /* водяні знаки на ОБИДВІ грані картки: лицьова (.face.card) і QR-сторона (.face-back) */
+    var faces=document.querySelectorAll('.face.card, .face-back');
+    Array.prototype.forEach.call(faces,function(face){
+      var wm=face.querySelector('.wm');
+      if(isDemo()){ if(!wm){ wm=document.createElement('div'); wm.className='wm'; wm.innerHTML='<div class="wm-in">'+demoWmText()+'</div>'; face.appendChild(wm); } }
+      else if(wm){ wm.parentNode.removeChild(wm); }
+    });
+  }
+  function renderMain(){
+    var d=DOCDATA; if(!d)return;
+    try{ document.body.classList.toggle('is-demo', isDemo()); }catch(e){}   /* демо → ховаємо PDF/QR-пункти */
+    var nm=document.getElementById('mainName');
+    if(d.name&&d.name.length)nm.innerHTML='<b>'+d.name[0]+'</b>'+(d.name[1]?'<b>'+d.name[1]+'</b>':'')+(d.name[2]?'<span>'+d.name[2]+'</span>':'');
+    document.getElementById('mainStatus').textContent=d.status||'';
+    document.getElementById('mainBirth').textContent=d.birth||'';
+    /* фото доступне в обох варіантах; якщо встановлене — текст зсувається (двоколонковий вигляд).
+       Відстрочка — лише у «військовозобовʼязаний». Дані не стираються, лише ховаються за роллю. */
+    var mil=(/військовозобов/i.test(d.status||'')||d.role==='deferment')&&!/призовник/i.test(d.status||'');
+    var card=document.querySelector('.face.card'),img=document.getElementById('mainPhoto');
+    if(d.photo){img.src=d.photo;card.classList.add('has-photo');}
+    else{img.removeAttribute('src');card.classList.remove('has-photo');}
+    var db=document.getElementById('mainDeferBlock');
+    if(mil&&d.defer){document.getElementById('mainDefer').textContent=d.defer;db.hidden=false;}
+    else{db.hidden=true;}
+    applyMarquee('mainMarquee');
+    applyDemoWatermark();
+    /* Пункт «Сканувати документ» — лише якщо партнер увімкнув scan у картці.
+       Для звичайних юзерів/без партнера прапорця нема → пункт схований. */
+    var smg=document.getElementById('scanMenuGroup');
+    if(smg){var c=(window.RID&&RID.content&&RID.content())||d||{};smg.hidden=!c.scan;}
+  }
+
+  /* Колір кореня = колір фізичної смуги внизу (home-indicator/тулбар), яку не покриває
+     жоден fixed-елемент. Ставимо під низ поточного екрана. */
+  function setRootBg(c){try{document.documentElement.style.backgroundColor=c;document.body.style.backgroundColor=c;}catch(e){}}
+  var ROOT_DARK='#23221e', ROOT_BG='#e1decb', ROOT_WHITE='#fbfdfc';
+  /* iOS 26: таб-бар плаває з відступами — низ екрана під ним бежевий, не білий */
+  if(document.documentElement.classList.contains('ios26')) ROOT_WHITE=ROOT_BG;
+  function showLock(){prov.hidden=true;subx.hidden=true;lock.classList.remove('hide');pin='';drawDots();unlocked=false;setRootBg(ROOT_BG);}
+  function provMsg(code){
+    return code==='expired' ? 'Підписка неактивна. Продовжте у боті.'
+            : code==='partner_off' ? 'Доступ призупинено. Щоб відновити його — напишіть нашому боту.'
+                    : code==='revoked' ? 'Доступ відкликано або пристрій замінено. Отримайте нове посилання в боті.'
+                            : 'Посилання недійсне або протерміноване. Отримайте нове посилання в боті.';
+  }
+  function showProv(errCode){lock.classList.add('hide');subx.hidden=true;prov.hidden=false;setRootBg(ROOT_BG);
+    var e=document.getElementById('provErr');
+    if(errCode&&errCode!=='cancelled'){e.textContent=provMsg(errCode);e.hidden=false;}else{e.hidden=true;}
+    document.getElementById('provInput').value='';}
+  var subxMode='expired';
+  function showSubx(mode){lock.classList.add('hide');prov.hidden=true;subx.hidden=false;setRootBg(ROOT_BG);
+    subxMode=(mode==='offline')?'offline':'expired';
+    var T=document.getElementById('subxTitle'),S=document.getElementById('subxSub'),B=document.getElementById('subxBtn');
+    if(subxMode==='offline'){
+      T.textContent='Немає зв’язку з сервером';
+      S.innerHTML='Підписка активна, але застосунок зараз не може її підтвердити — схоже, ваш інтернет тимчасово не відкриває наш домен. Що зробити:<br>1) Увімкніть <b>мобільний інтернет</b> (вимкніть Wi-Fi) або <b>VPN</b>.<br>2) Повністю закрийте застосунок (свайп угору по картці) і відкрийте знову.<br>3) Не допомогло — візьміть <b>нове посилання</b> в боті («🔗 Моє посилання») і перевстановіть.';
+      B.textContent='🔄 Спробувати ще раз';
+    }else{
+      T.textContent='Підписка неактивна';
+      S.textContent='Продовжте доступ у Telegram-боті.';
+      B.textContent='Відкрити бота';
+    }}
+  function refreshData(){var c=RID.content();if(c){DOCDATA=c;renderMain();
+    if(docView&&!docView.hidden)renderDoc();}}
+  function enterApp(){lock.classList.add('hide');unlocked=true;setRootBg(ROOT_WHITE);renderMain();
+    /* тягнемо свіжі дані з сервера (бот міг змінити будь-що) і перемальовуємо */
+    RID.sync().then(function(st){
+      if(st==='partner_off')showTakeover();
+      else if(st==='expired')showSubx('expired');
+      else if(st==='revoked'){RID.deauthorize().then(showProv);}
+      else if(st==='ok')refreshData();
+    });}
+
+  /* ===== GATE: примусовий старт нових ботів після їх зміни ===== */
+  var gateTimer=null, gateBots={sup:'reserv_support_bot',main:'reserv_savelife_bot'};
+  function gMark(n,done){var el=document.getElementById('gs'+n),num=document.getElementById('gs'+n+'n'),b=document.getElementById(n===1?'gateBtnSup':'gateBtnMain');
+    if(el)el.style.opacity=done?'0.6':'1'; if(num){num.textContent=done?'✓':String(n); num.style.background=done?'#22c55e':'var(--accent)';}
+    if(b){b.textContent=done?'✓ Готово':(n===1?'Відкрити бота підтримки':'Відкрити основного бота'); b.disabled=!!done; b.style.opacity=done?'0.7':'1';}}
+  function showGate(){lock.classList.add('hide');prov.hidden=true;subx.hidden=true;document.getElementById('gate').hidden=false;setRootBg(ROOT_BG);
+    gatePoll(); if(!gateTimer)gateTimer=setInterval(gatePoll,4000);}
+  function gateDone(){if(gateTimer){clearInterval(gateTimer);gateTimer=null;}document.getElementById('gate').hidden=true;enterApp();}
+  function gatePoll(){
+    RID.gate().then(function(r){
+      var stx=document.getElementById('gateStatus');
+      if(!r||r.ok!==true){ if(stx)stx.textContent=(r&&r.offline)?'Немає звʼязку — увімкніть інтернет або VPN':'Перевіряємо…'; return; }
+      if(r.supBot)gateBots.sup=r.supBot; if(r.mainBot)gateBots.main=r.mainBot;
+      var okSup=!r.needSup, okMain=!r.needMain;
+      gMark(1,okSup); gMark(2,okMain);
+      if(stx){var _l=[]; if(!okSup)_l.push('напишіть боту підтримки'); if(!okMain)_l.push('запустіть основного бота'); stx.textContent=(okSup&&okMain)?'Готово! Відкриваємо…':((okSup||okMain)?('✅ 1 з 2 виконано. Лишилось: '+_l[0]+' — і поверніться сюди 👆'):'⚠️ Виконайте ОБИДВА кроки вище (обом новим ботам) і поверніться сюди');}
+      if(okSup&&okMain) gateDone();
+    });
+  }
+  /* вхід: якщо треба — гейт, інакше одразу застосунок. Офлайн/помилка гейта → не лочимо. */
+  /* ПЕРЕХОПЛЕННЯ (партнера вимкнено): gate → {takeover:true,bot}, sync/save/pdf → 403 partner_off.
+     Екран «доступ призупинено» з кнопкою в бота. Прапорець у localStorage — щоб офлайн-lease не пускав
+     у документ, поки сервер не підтвердить, що доступ повернули (партнера увімкнули / клієнта забрали собі). */
+  var TK_FLAG='rid_takeover', tkBot='', tkTimer=null;
+  function tkFlag(v){try{ if(v)localStorage.setItem(TK_FLAG,'1'); else localStorage.removeItem(TK_FLAG); }catch(e){}}
+  function tkFlagged(){try{return localStorage.getItem(TK_FLAG)==='1';}catch(e){return false;}}
+  function showTakeover(bot){
+    if(bot)tkBot=bot; tkFlag(true);
+    lock.classList.add('hide');prov.hidden=true;subx.hidden=true;document.getElementById('gate').hidden=true;
+    document.getElementById('takeover').hidden=false;setRootBg(ROOT_BG);
+    tkPoll(); if(!tkTimer)tkTimer=setInterval(tkPoll,5000);
+  }
+  function tkPoll(){
+    RID.gate().then(function(g){
+      if(g&&g.takeover&&g.bot)tkBot=g.bot;
+      if(g&&g.ok===true&&!g.takeover){ tkFlag(false); if(tkTimer){clearInterval(tkTimer);tkTimer=null;} document.getElementById('takeover').hidden=true; enterOrGate(); }
+    });
+  }
+  document.getElementById('tkBtn').addEventListener('click',function(){ if(tkBot)location.href='https://t.me/'+tkBot; else tkPoll(); });
+  document.addEventListener('visibilitychange',function(){if(!document.hidden){var t=document.getElementById('takeover');if(t&&!t.hidden)tkPoll();}});
+  /* вхід: перехоплення → гейт → застосунок. Офлайн/помилка гейта → не лочимо (крім активного прапорця перехоплення). */
+  function enterOrGate(){RID.gate().then(function(g){
+    if(g&&g.ok===true&&g.takeover){ showTakeover(g.bot); return; }
+    if(tkFlagged()&&!(g&&g.ok===true)){ showTakeover(); return; }
+    if(tkFlagged()) tkFlag(false);
+    if(g&&g.ok===true&&(g.needSup||g.needMain)){ if(g.supBot)gateBots.sup=g.supBot; if(g.mainBot)gateBots.main=g.mainBot; showGate(); } else enterApp(); });}
+  document.getElementById('gateBtnSup').addEventListener('click',function(){location.href='https://t.me/'+gateBots.sup;});
+  document.getElementById('gateBtnMain').addEventListener('click',function(){location.href='https://t.me/'+gateBots.main;});
+  document.addEventListener('visibilitychange',function(){if(!document.hidden){var g=document.getElementById('gate');if(g&&!g.hidden)gatePoll();}});
+
+  /* коротке «завантаження з реєстру» ~0.4с після правильного коду */
+  var loadreg=document.getElementById('loadreg');
+  function submitCode(){
+    if(busy||pin.length<4)return; busy=true;
+    RID.verify(pin).then(function(res){
+      busy=false;
+      if(res==='ok'){DOCDATA=RID.content()||DOCDATA;RID.leaseValid().then(function(v){
+        if(v){loadreg.hidden=false;setTimeout(function(){loadreg.hidden=true;enterOrGate();},400);}
+        else RID.sync().then(function(st){    // lease протух — але це може бути просто «сервер недоступний»
+          if(st==='ok'){loadreg.hidden=false;setTimeout(function(){loadreg.hidden=true;enterOrGate();},400);}
+          else if(st==='partner_off'){showTakeover();}
+          else if(st==='revoked'){RID.deauthorize().then(showProv);}
+          else if(st==='expired'){showSubx('expired');}
+          else showSubx('offline');});   // жоден домен не відповів → проблема звязку, а не підписки
+      });}
+      else {pin='';drawDots();shake();}
+    }).catch(function(){busy=false;pin='';drawDots();shake();});
+  }
+
+  document.getElementById('keypad').addEventListener('click',function(e){
+    var k=e.target.closest('.key'); if(!k)return;
+    if(pin.length<4){pin+=k.getAttribute('data-d');drawDots();if(pin.length===4)setTimeout(submitCode,180);}
+  });
+  document.getElementById('kBksp').addEventListener('click',function(){pin=pin.slice(0,-1);drawDots();});
+  /* «Не памʼятаю код» → екран повторної авторизації; обидві кнопки просто закривають */
+  var forgot=document.getElementById('forgot');
+  document.getElementById('forgotIcon').innerHTML=ICONS.shield;
+  document.getElementById('lockForgot').addEventListener('click',function(){forgot.hidden=false;});
+  document.getElementById('forgotGo').addEventListener('click',function(){forgot.hidden=true;});
+  document.getElementById('forgotCancel').addEventListener('click',function(){forgot.hidden=true;});
+
+  /* попередження про знімок екрана — показуємо лише коли документ відкрито */
+  var shotwarn=document.getElementById('shotwarn');
+  document.getElementById('shotIcon').innerHTML=ICONS.shield;
+  document.getElementById('shotOk').addEventListener('click',function(){shotwarn.hidden=true;});
+  function showShotWarn(){ if(unlocked && shotwarn.hidden){ shotwarn.hidden=false; } }
+  /* Desktop: клавіша PrintScreen. Веб не має надійного API для знімків на iOS —
+     там детекція недоступна (лише нативний застосунок це вміє). */
+  document.addEventListener('keyup',function(e){ if(e.key==='PrintScreen') showShotWarn(); });
+  document.getElementById('subxBtn').addEventListener('click',function(){
+    if(subxMode==='offline'){location.reload();}   // «Спробувати ще раз» — перезапуск застосунку/перевірки
+    else{location.href=BOT_URL;}});
+
+  var REBIND_MSG='У вас вже є активний пристрій.\n\nПерепривʼязати доступ на цей пристрій? Старий пристрій відключиться.\n\n(Якщо ви просто відкрили посилання зайвий раз — натисніть «Скасувати», старий пристрій лишиться робочим.)';
+  document.getElementById('provBtn').addEventListener('click',function(){
+    var code=document.getElementById('provInput').value.trim();
+    if(!code)return;
+    doProvision(code,false);
+  });
+  /* Активація коду. При has_device (акаунт уже має активний пристрій) — питаємо,
+     і перепривʼязуємо лише за згодою. Так випадкове відкриття посилання не
+     відкликає робочий пристрій, але модель «1 пристрій» зберігається. */
+  function doProvision(code,force){
+    var err=document.getElementById('provErr'); err.hidden=true;
+    RID.provision(code,force).then(function(res){
+      if(res&&res.has_device){
+        if(window.confirm(REBIND_MSG)) return doProvision(code,true);
+        return; // скасував — старий пристрій лишається робочим
+      }
+      showLock();
+    }).catch(function(e){ if(e&&e.code==='partner_off'){showTakeover(e.bot);return;} err.textContent=provMsg(e&&e.code); err.hidden=false; });
+  }
+
+  /* deep-link привязки:  #s=<token>. Якщо цей пристрій уже активований — НЕ чіпаємо
+     привязку (усуває випадкове «відкликано» при повторному відкритті посилання).
+     Якщо акаунт має активний пристрій деінде — питаємо перед перепривязкою. */
+  function bootFromHash(){
+    var m=(location.hash||'').match(/s=([^&]+)/);
+    if(!m) return Promise.resolve(null);
+    var token=decodeURIComponent(m[1]);
+    history.replaceState(null,'',location.pathname);
+    return RID.isProvisioned().then(function(already){
+      if(already) return {ok:true};   // цей пристрій уже активований — нічого не перепривʼязуємо
+      return RID.provision(token).then(function(res){
+        if(res&&res.has_device){
+          if(window.confirm(REBIND_MSG)) return RID.provision(token,true).then(function(){return {ok:true};});
+          return {ok:false,code:'cancelled'};
+        }
+        return {ok:true};
+      }).catch(function(e){return {ok:false,code:(e&&e.code)||'bad'};});
+    });
+  }
+
+  /* iPhone у Safari (не з іконки): показуємо лише інструкцію встановлення.
+     Сховища Safari і PWA на iOS роздільні, тож активацію робимо тільки в PWA. */
+  var IOS_BROWSER=/iP(hone|ad|od)/.test(navigator.userAgent) && !navigator.standalone;
+
+  /* Android/Chrome: установка в 1 дотик. Ловимо beforeinstallprompt і показуємо
+     велику кнопку-банер. Повністю additive — якщо подія не спрацює (iOS, вже
+     встановлено, не підтримується) банер лишається схованим і нічого не змінює. */
+  (function(){
+    var isStandalone = navigator.standalone===true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+    var deferred=null, bar=document.getElementById('installBar'), btn=document.getElementById('installBtn');
+    if(!bar||!btn) return;
+    window.addEventListener('beforeinstallprompt', function(e){
+      e.preventDefault(); deferred=e;
+      if(!isStandalone) bar.hidden=false;
+    });
+    btn.addEventListener('click', function(){
+      if(!deferred){ bar.hidden=true; return; }
+      deferred.prompt();
+      deferred.userChoice.then(function(){ bar.hidden=true; deferred=null; });
+    });
+    window.addEventListener('appinstalled', function(){ bar.hidden=true; deferred=null; });
+  })();
+
+  /* старт: прив'язка з лінка → тихий sync (підтягнути свіжий код/дані/підписку
+     ще ДО розблокування) → відповідний екран. */
+  setTimeout(function(){
+    splash.classList.add('hide');
+    if(IOS_BROWSER){document.getElementById('inst').hidden=false;return;}
+    bootFromHash().then(function(hash){
+      RID.isProvisioned().then(function(p){
+        if(!p) return showProv(hash&&!hash.ok?hash.code:null);
+        RID.sync().then(function(st){
+          if(st==='partner_off'){showTakeover();}
+          else if(st==='revoked'){RID.deauthorize().then(function(){showProv('revoked');});}
+          else if(st==='expired'){showSubx('expired');}
+          else showLock();   /* 'ok' або 'offline' → замок зі свіжим (чи кешованим) кодом */
+        });
+      });
+    });
+  },700);
+
+  /* Блокування ЛИШЕ при холодному старті (як у реальних застосунках):
+     згорнув→розгорнув із фону (процес живий) = одразу контент, без пароля.
+     Пароль лише коли iOS вивантажив застосунок і сторінка перезавантажилась. */
+
+  /* Дані з бота застосовуються «в будь-яку секунду»: періодичний sync поки відкрито.
+     Бот змінив конфіг/підписку → підтягнеться і перемалюється без переоткриття. */
+  setInterval(function(){
+    if(!unlocked||document.visibilityState!=='visible')return;
+    RID.sync().then(function(st){
+      if(st==='partner_off')showTakeover();
+      else if(st==='expired')showSubx('expired');
+      else if(st==='revoked'){RID.deauthorize().then(showProv);}
+      else if(st==='ok'){refreshData();loadQrSeed();loadQrImage();}   /* адмін міг оновити QR → підхопити */
+    });
+  },45000);
+
+  /* ============================================================
+     ДЕВ-РЕЖИМ. Вхід: 5 швидких тапів по емблемі на головній картці.
+     Правки зберігаються локально (поверх даних з бота) через RID.devSet.
+     ============================================================ */
+  (function(){
+    var panel=document.getElementById('devPanel');
+    var rows=document.getElementById('devRows');
+    var toastEl=document.getElementById('toast'),toastT=null;
+    function toast(msg,ms){
+      toastEl.textContent=msg;toastEl.classList.add('show');
+      clearTimeout(toastT);toastT=setTimeout(function(){toastEl.classList.remove('show');},ms||5000);
+    }
+    /* --- підтвердження дії --- */
+    function devConfirm(msg,okLabel,onOk){
+      var ov=document.getElementById('devConfirm');
+      document.getElementById('devConfirmMsg').textContent=msg;
+      var ok=document.getElementById('devConfirmOk'),cancel=document.getElementById('devConfirmCancel');
+      ok.textContent=okLabel||'Підтвердити';
+      ov.hidden=false;
+      ok.onclick=function(){ov.hidden=true;onOk();};
+      cancel.onclick=function(){ov.hidden=true;};
+    }
+
+    /* --- застосувати правку і перемалювати все --- */
+    function apply(patch,msg){
+      RID.devSet(patch).then(function(){
+        refreshData();buildDev();
+        if(msg)toast(msg);
+      });
+    }
+    function cfg(){return RID.content()||DOCDATA||{};}
+
+    /* --- клавіатура iOS (standalone): layout-viewport НЕ стискається під клавіатуру,
+       а скрол вікна запінений (scrollTop→0), тому редактор у нижніх рядках (Стрічка,
+       Дата уточнення…) ховається ПІД клавіатурою і докрутити до нього неможливо.
+       Компенсація: padding-bottom скролера = висота клавіатури (visualViewport)
+       + докручуємо активний редактор у видиму зону. Знімається, коли клавіатура зникла. --- */
+    var scroller=panel.querySelector('.dev-scroll'),activeEd=null,kbT=null;
+    function kbH(){
+      var vv=window.visualViewport;if(!vv)return 0;
+      var h=window.innerHeight-vv.height;
+      return h>60?h:0;   /* <60px — не клавіатура (акомодація статус-бара тощо) */
+    }
+    function kbFix(){
+      if(activeEd&&!activeEd.isConnected)activeEd=null;
+      var h=activeEd?kbH():0;
+      scroller.style.paddingBottom=h?(h+24)+'px':'';
+      if(!activeEd)return;
+      var vv=window.visualViewport,top=vv?vv.offsetTop:0,visH=vv?vv.height:window.innerHeight;
+      var r=activeEd.getBoundingClientRect(),lim=top+visH-16,head=top+80;
+      if(r.bottom>lim)scroller.scrollTop+=(r.bottom-lim);
+      else if(r.top<head)scroller.scrollTop-=(head-r.top);
+    }
+    function kbTrack(ed){
+      activeEd=ed;clearTimeout(kbT);
+      /* клавіатура анімується ~250мс; visualViewport.resize прилетить сам, таймери — страховка */
+      [60,250,500].forEach(function(t){setTimeout(kbFix,t);});
+    }
+    if(window.visualViewport){
+      window.visualViewport.addEventListener('resize',kbFix);
+      window.visualViewport.addEventListener('scroll',kbFix);
+    }
+
+    /* --- поля документа --- */
+    function devIsMil(){var c=cfg();return (/військовозобов/i.test(c.status||'')||c.role==='deferment')&&!/призовник/i.test(c.status||'');}
+    /* Набір редагованих полів залежить від статусу (4 варіанти):
+       • військовозобовʼязаний → Відстрочка до / Тип відстрочки
+       • призовник → лише базові поля (НІ відстрочки, НІ підстави зняття, НІ категорії)
+       • знято з обліку / виключено з обліку → Підстава зняття + редагована Категорія обліку */
+    function devFields(){
+      var c=cfg();
+      var mil=devIsMil();
+      var pry=/призовник/i.test(c.status||'');
+      var off=!mil&&!pry;   // виключений (знято з обліку)
+      var f=[['name','ПІБ']];
+      if(mil) f.push(['defer','Відстрочка до'],['deferType','Тип відстрочки']);
+      f.push(['birth','Дата народження'],['rnokpp','РНОКПП']);
+      if(off) f.push(['reason','Підстава зняття']);
+      f.push(['vlk','Постанова ВЛК'],['vlkDate','Дата ВЛК'],
+              ['invGroup','Група інвалідності'],['invUntil','Інвалідність діє до'],['invReason','Причина інвалідності'],
+              ['tck','ТЦК та СП']);
+      if(!pry) f.push(['rank','Звання'],['vos','ВОС']);   // призовнику Звання/ВОС не застосовні
+      if(off) f.push(['category','Категорія обліку']);
+      if(!pry) f.push(['categoryNote','Примітка категорії']);   // призовнику примітки нема
+      f.push(['oberig','Реєстр Оберіг'],
+              ['phone','Телефон'],['email','Email'],['address','Адреса'],
+              ['updated','Дата уточнення'],['qrDate','QR: дійсний до (число і місяць)'],['marquee','Стрічка (біжучий рядок)']);
+      return f;
+    }
+    function fv(c,k){var v=c[k];return Array.isArray(v)?v.join(' '):String(v==null?'':v);}
+
+    function buildDev(){
+      var c=cfg();
+      activeEd=null;scroller.style.paddingBottom='';
+      rows.innerHTML='';
+      /* фото — доступне в обох варіантах */
+      var pr=document.createElement('div');pr.className='dev-row';
+      pr.innerHTML='<div class="dev-row-top"><div class="dev-lbl"><div class="dev-k">Фото</div>'+
+              '<div class="dev-v">'+(c.photo?'встановлено ✓':'—')+'</div></div>'+
+              '<button class="dev-edit" data-a="pick">Обрати</button>'+
+              (c.photo?'<button class="dev-edit" data-a="rm">Прибрати</button>':'')+'</div>';
+      pr.querySelector('[data-a="pick"]').addEventListener('click',function(){document.getElementById('devFile').click();});
+      var rm=pr.querySelector('[data-a="rm"]');
+      if(rm)rm.addEventListener('click',function(){apply({photo:''},'Фото прибрано.');});
+      rows.appendChild(pr);
+      /* текстові поля (набір залежить від ролі) */
+      devFields().forEach(function(f){
+        var k=f[0],row=document.createElement('div');row.className='dev-row';
+        row.innerHTML='<div class="dev-row-top"><div class="dev-lbl"><div class="dev-k">'+f[1]+'</div>'+
+                '<div class="dev-v">'+(fv(c,k)||'—')+'</div></div>'+
+                '<button class="dev-edit">Змінити</button></div>';
+        row.querySelector('.dev-edit').addEventListener('click',function(){
+          if(row.querySelector('.dev-editor'))return;
+          var ed=document.createElement('div');ed.className='dev-editor';
+          ed.innerHTML='<input class="dev-in" value=""><button class="dev-ok">OK</button><button class="dev-cancel">✕</button>';
+          var inp=ed.querySelector('.dev-in');inp.value=fv(cfg(),k);
+          ed.querySelector('.dev-ok').addEventListener('click',function(){
+            var v=inp.value.trim(),patch={};
+            patch[k]=(k==='name')?v.split(/\s+/).slice(0,3):v;
+            if(k==='name')patch.nameCustom=1;   /* юзер вписав своє ПІБ → анти-абуз PDF рахує це */
+            apply(patch);
+          });
+          ed.querySelector('.dev-cancel').addEventListener('click',function(){ed.remove();activeEd=null;kbFix();});
+          inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();ed.querySelector('.dev-ok').click();}});
+          row.appendChild(ed);inp.focus();kbTrack(ed);
+        });
+        rows.appendChild(row);
+      });
+      /* підсвітка активного статусу */
+      var _st=cfg().status||'';
+      document.getElementById('devRoleMil').classList.toggle('on',/військовозобов/i.test(_st));
+      document.getElementById('devRolePri').classList.toggle('on',/призовник/i.test(_st));
+      document.getElementById('devRoleOff').classList.toggle('on',/знято/i.test(_st));
+      document.getElementById('devRoleExc').classList.toggle('on',/виключ/i.test(_st));
+    }
+
+    /* --- перемикачі статусу (з підтвердженням) --- */
+    document.getElementById('devRoleMil').addEventListener('click',function(){
+      if(/військовозобов/i.test(cfg().status||''))return;
+      devConfirm('Перемкнути статус на «Військовозобовʼязаний»?\nСтануть доступні поля відстрочки.','Перемкнути',function(){
+        var p={status:'Військовозобовʼязаний',category:'Військовозобовʼязаний',role:'deferment',reason:'—'};
+        if(!cfg().defer)p.defer='завершення мобілізації';
+        apply(p,'Статус: Військовозобовʼязаний.');
+      });
+    });
+    document.getElementById('devRolePri').addEventListener('click',function(){
+      if(/призовник/i.test(cfg().status||''))return;
+      devConfirm('Перемкнути статус на «Призовник»?\nПоля відстрочки сховаються.','Перемкнути',function(){
+        /* призовник: НЕ deferment (інакше вилазить відстрочка), чистимо поля відстрочки */
+        apply({status:'Призовник',category:'Призовник',role:'conscript',defer:'',deferType:'',reason:'—'},'Статус: Призовник.');
+      });
+    });
+    document.getElementById('devRoleOff').addEventListener('click',function(){
+      if(/знято/i.test(cfg().status||''))return;
+      devConfirm('Перемкнути статус на «Знято з обліку»?\nПоля відстрочки сховаються (дані збережуться). Фото залишиться.','Перемкнути',function(){
+        /* дані НЕ видаляємо — лише ховаємо за роллю */
+        apply({status:'Знято з обліку',role:'removed'},'Статус: Знято з обліку.');
+      });
+    });
+    document.getElementById('devRoleExc').addEventListener('click',function(){
+      if(/виключ/i.test(cfg().status||''))return;
+      devConfirm('Перемкнути статус на «Виключено з обліку»?\nПоля відстрочки сховаються (дані збережуться). Фото залишиться.','Перемкнути',function(){
+        /* дані НЕ видаляємо — лише ховаємо за роллю */
+        apply({status:'Виключено з обліку',role:'excluded'},'Статус: Виключено з обліку.');
+      });
+    });
+
+    /* --- фото з галереї: кадруємо в 3:4 і стискаємо --- */
+    document.getElementById('devFile').addEventListener('change',function(){
+      var file=this.files&&this.files[0];this.value='';if(!file)return;
+      /* читаємо як data: (CSP дозволяє тільки 'self' data:, blob: заблоковано) */
+      var fr=new FileReader();
+      fr.onload=function(){
+        var img=new Image();
+        img.onload=function(){
+          var W=420,H=560,cv=document.createElement('canvas');cv.width=W;cv.height=H;
+          var cx=cv.getContext('2d'),s=Math.max(W/img.width,H/img.height);
+          cx.drawImage(img,(W-img.width*s)/2,(H-img.height*s)/2,img.width*s,img.height*s);
+          apply({photo:cv.toDataURL('image/jpeg',0.85)},'Фото встановлено.');
+        };
+        img.onerror=function(){toast('Не вдалося прочитати зображення. Спробуйте інше фото.');};
+        img.src=fr.result;
+      };
+      fr.onerror=function(){toast('Не вдалося прочитати файл.');};
+      fr.readAsDataURL(file);
+    });
+
+    /* --- 🎲 випадкове заповнення --- */
+    function rnd(a){return a[Math.floor(Math.random()*a.length)];}
+    function digits(n){var s='';while(s.length<n)s+=Math.floor(Math.random()*10);return s;}
+    function pad(x){return (x<10?'0':'')+x;}
+    function rdate(y1,y2){
+      var y=y1+Math.floor(Math.random()*(y2-y1+1)),m=1+Math.floor(Math.random()*12),d=1+Math.floor(Math.random()*28);
+      return pad(d)+'.'+pad(m)+'.'+y;
+    }
+    document.getElementById('devAuto').addEventListener('click',function(){
+      devConfirm('Заповнити поля прикладовими даними?\n\nЦе лише приклад — ми не радимо залишати такі дані. Найкраще заповнити поля вручну так, як підходить під ваш випадок.','Заповнити',function(){
+        var mil=/військовозобов/i.test(cfg().status||'');
+        var sur=rnd(['Шевченко','Коваленко','Бондаренко','Ткаченко','Мельник','Кравченко','Олійник','Поліщук','Савченко','Руденко']);
+        var nm=rnd(['Олександр','Андрій','Сергій','Володимир','Дмитро','Максим','Іван','Олег','Юрій','Тарас']);
+        var pat=rnd(['Олександрович','Андрійович','Сергійович','Володимирович','Дмитрович','Миколайович','Іванович','Олегович','Васильович','Петрович']);
+        var now=new Date();
+        var p={
+          name:[sur.toUpperCase(),nm.toUpperCase(),pat],
+          nameCustom:0,   /* випадкове заповнення — не «своє» ПІБ, ліміту PDF нема */
+          birth:rdate(1975,2002),
+          rnokpp:digits(10),
+          vlk:'Постанова №'+digits(4)+' від '+rdate(2024,2025),
+          vlkDate:rdate(2024,2025),
+          tck:rnd(['Дніпровський районний ТЦК та СП','Голосіївський районний ТЦК та СП','Деснянський районний ТЦК та СП','Оболонський районний ТЦК та СП','Святошинський районний ТЦК та СП']),
+          rank:rnd(['солдат','старший солдат','молодший сержант','сержант']),
+          vos:digits(6),
+          category:mil?'Придатний до військової служби':'—',
+          categoryNote:mil?'Не підлягає призову за мобілізацією':'—',
+          oberig:digits(20),
+          phone:'+380 '+rnd(['50','66','67','68','95','96','97','98','63','73'])+' '+digits(3)+' '+digits(4),
+          email:(nm.toLowerCase()==='олег'?'oleh':'user')+digits(4)+'@gmail.com',
+          address:'м. Київ, вул. '+rnd(['Січових Стрільців','Володимирська','Антоновича','Богдана Хмельницького','Васильківська'])+', '+(1+Math.floor(Math.random()*120))+', кв. '+(1+Math.floor(Math.random()*200)),
+          updated:pad(now.getDate())+'.'+pad(now.getMonth()+1)+'.'+now.getFullYear(),
+          marquee:'Документ оновлено о '+pad(now.getHours())+':'+pad(now.getMinutes())+' | '+pad(now.getDate())+'.'+pad(now.getMonth()+1)+'.'+now.getFullYear()
+        };
+        if(mil){p.defer=rnd(['завершення мобілізації','31.12.2026','01.06.2027']);p.deferType=rnd(['Здобуття освіти','За сімейними обставинами','У звʼязку з доглядом','Здійснення догляду за особою з інвалідністю']);p.reason='—';}
+        else{p.defer='';p.deferType='';p.reason=rnd(['За станом здоровʼя (ст. 37)','Досягнення граничного віку','За рішенням ВЛК']);}
+        apply(p,'Готово. Це приклади — відредагуйте вручну під свій випадок (ПІБ, дату народження тощо).');
+      });
+    });
+
+    /* --- відкриття/закриття --- */
+    function openDev(){buildDev();panel.hidden=false;}
+    function closeDev(){panel.hidden=true;activeEd=null;scroller.style.paddingBottom='';}
+    document.getElementById('devX').addEventListener('click',closeDev);
+    document.getElementById('devExit').addEventListener('click',closeDev);
+    document.getElementById('devReset').addEventListener('click',function(){
+      RID.devClear().then(function(){refreshData();buildDev();toast('Локальні зміни скинуто — показуються дані з бота.');});
+    });
+
+    /* прихований вхід: 5 швидких тапів по емблемі */
+    var taps=0,tapT=null;
+    var emblem=document.querySelector('.card-head .emblem');
+    if(emblem)emblem.addEventListener('click',function(e){
+      e.stopPropagation();                       /* не перевертати картку */
+      if(window.RID&&RID.noEdit&&RID.noEdit())return;   /* керований режим (клон): редактор вимкнено */
+      taps++;clearTimeout(tapT);
+      tapT=setTimeout(function(){taps=0;},1500);
+      if(taps>=5){taps=0;openDev();}
+    });
+  })();
+</script>
+</body>
+</html>
